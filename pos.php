@@ -28,9 +28,9 @@ $message = '';
 $error = '';
 $receipt_number = '';
 $last_sale_amount = 0;
-$receipt_id = 0; // Add this variable to store receipt ID
+$receipt_id = 0;
 
-// Company details for receipts
+// Company details
 $company_details = [
     'name' => 'Vinmel Irrigation',
     'address' => 'Nairobi, Kenya',
@@ -38,16 +38,19 @@ $company_details = [
     'email' => 'info@vinmel.com'
 ];
 
-// Get current period for tracking
+// Get current period
 $current_period = getCurrentTimePeriod($user_id, $db);
 $period_check = canModifyData($user_id, $db);
 
+// Check if this is a print request
+$is_print_request = isset($_GET['print_receipt']) && isset($_GET['receipt_number']);
+
 /* -------------------------------------------------------
-   RECEIPT STORAGE FUNCTIONS
+   RECEIPT FUNCTIONS
 -------------------------------------------------------- */
 
 /**
- * Generate receipt HTML for storage
+ * Generate receipt HTML for preview and printing
  */
 function generateReceiptHTML($receipt_number, $transaction, $items, $company_details) {
     ob_start();
@@ -57,18 +60,85 @@ function generateReceiptHTML($receipt_number, $transaction, $items, $company_det
     <head>
         <meta charset="UTF-8">
         <style>
-            body { font-family: Arial, sans-serif; font-size: 12px; margin: 0; padding: 20px; }
-            .receipt { width: 300px; margin: 0 auto; }
-            .header { text-align: center; border-bottom: 2px dashed #000; padding-bottom: 10px; margin-bottom: 10px; }
-            .header h2 { margin: 5px 0; }
-            .info { margin: 10px 0; }
-            .info-row { display: flex; justify-content: space-between; margin: 3px 0; }
-            .items-table { width: 100%; border-collapse: collapse; margin: 10px 0; }
-            .items-table th, .items-table td { border-bottom: 1px solid #ddd; padding: 5px; text-align: left; }
-            .items-table th { border-bottom: 2px solid #000; }
-            .total-section { margin-top: 10px; }
-            .total-row { display: flex; justify-content: space-between; font-weight: bold; padding: 3px 0; }
-            .footer { text-align: center; margin-top: 20px; padding-top: 10px; border-top: 2px dashed #000; font-size: 10px; }
+            body { 
+                font-family: 'Courier New', monospace; 
+                font-size: 12px; 
+                margin: 0; 
+                padding: 15px;
+                background: white;
+            }
+            .receipt { 
+                width: 100%; 
+                max-width: 300px; 
+                margin: 0 auto; 
+            }
+            .header { 
+                text-align: center; 
+                border-bottom: 2px dashed #000; 
+                padding-bottom: 10px; 
+                margin-bottom: 10px; 
+            }
+            .header h2 { 
+                margin: 5px 0; 
+                font-size: 16px;
+                font-weight: bold;
+            }
+            .header p { 
+                margin: 3px 0; 
+                font-size: 11px;
+            }
+            .info { 
+                margin: 10px 0; 
+            }
+            .info-row { 
+                display: flex; 
+                justify-content: space-between; 
+                margin: 3px 0; 
+                font-size: 11px;
+            }
+            .items-table { 
+                width: 100%; 
+                border-collapse: collapse; 
+                margin: 10px 0; 
+                font-size: 11px;
+            }
+            .items-table th, 
+            .items-table td { 
+                border-bottom: 1px solid #ddd; 
+                padding: 5px 3px; 
+                text-align: left; 
+            }
+            .items-table th { 
+                border-bottom: 2px solid #000; 
+                font-weight: bold;
+            }
+            .total-section { 
+                margin-top: 10px; 
+            }
+            .total-row { 
+                display: flex; 
+                justify-content: space-between; 
+                padding: 3px 0; 
+                font-size: 11px;
+            }
+            .grand-total { 
+                font-weight: bold; 
+                font-size: 13px; 
+                border-top: 2px solid #000; 
+                padding-top: 8px; 
+                margin-top: 8px; 
+            }
+            .footer { 
+                text-align: center; 
+                margin-top: 15px; 
+                padding-top: 10px; 
+                border-top: 2px dashed #000; 
+                font-size: 10px; 
+            }
+            .divider { 
+                border-bottom: 1px dashed #000; 
+                margin: 8px 0; 
+            }
         </style>
     </head>
     <body>
@@ -80,30 +150,34 @@ function generateReceiptHTML($receipt_number, $transaction, $items, $company_det
                 <p>Email: <?= htmlspecialchars($company_details['email']) ?></p>
             </div>
             
+            <div class="divider"></div>
+            
             <div class="info">
                 <div class="info-row">
-                    <span>Receipt #:</span>
+                    <span><strong>Receipt #:</strong></span>
                     <span><?= htmlspecialchars($receipt_number) ?></span>
                 </div>
                 <div class="info-row">
-                    <span>Date:</span>
+                    <span><strong>Date:</strong></span>
                     <span><?= date('Y-m-d H:i:s', strtotime($transaction['transaction_date'])) ?></span>
                 </div>
-                <?php if ($transaction['customer_name']): ?>
+                <?php if (!empty($transaction['customer_name'])): ?>
                 <div class="info-row">
-                    <span>Customer:</span>
+                    <span><strong>Customer:</strong></span>
                     <span><?= htmlspecialchars($transaction['customer_name']) ?></span>
                 </div>
                 <?php endif; ?>
                 <div class="info-row">
-                    <span>Seller:</span>
+                    <span><strong>Seller:</strong></span>
                     <span><?= htmlspecialchars($transaction['seller_name']) ?></span>
                 </div>
                 <div class="info-row">
-                    <span>Payment:</span>
+                    <span><strong>Payment:</strong></span>
                     <span><?= strtoupper(htmlspecialchars($transaction['payment_method'])) ?></span>
                 </div>
             </div>
+            
+            <div class="divider"></div>
             
             <table class="items-table">
                 <thead>
@@ -117,14 +191,16 @@ function generateReceiptHTML($receipt_number, $transaction, $items, $company_det
                 <tbody>
                     <?php foreach ($items as $item): ?>
                     <tr>
-                        <td><?= htmlspecialchars($item['product_name']) ?><br><small><?= htmlspecialchars($item['sku']) ?></small></td>
-                        <td><?= $item['quantity'] ?></td>
-                        <td>KSh <?= number_format($item['unit_price'], 2) ?></td>
-                        <td>KSh <?= number_format($item['total_price'], 2) ?></td>
+                        <td><?= htmlspecialchars($item['product_name']) ?></td>
+                        <td style="text-align: center;"><?= $item['quantity'] ?></td>
+                        <td style="text-align: right;"><?= number_format($item['unit_price'], 2) ?></td>
+                        <td style="text-align: right;"><?= number_format($item['total_price'], 2) ?></td>
                     </tr>
                     <?php endforeach; ?>
                 </tbody>
             </table>
+            
+            <div class="divider"></div>
             
             <div class="total-section">
                 <div class="total-row">
@@ -137,22 +213,18 @@ function generateReceiptHTML($receipt_number, $transaction, $items, $company_det
                     <span>- KSh <?= number_format($transaction['discount_amount'], 2) ?></span>
                 </div>
                 <?php endif; ?>
-                <?php if ($transaction['tax_amount'] > 0): ?>
-                <div class="total-row">
-                    <span>Tax (16%):</span>
-                    <span>KSh <?= number_format($transaction['tax_amount'], 2) ?></span>
-                </div>
-                <?php endif; ?>
-                <div class="total-row" style="font-size: 14px; border-top: 2px solid #000; padding-top: 5px;">
+                <div class="total-row grand-total">
                     <span>TOTAL:</span>
                     <span>KSh <?= number_format($transaction['net_amount'], 2) ?></span>
                 </div>
             </div>
             
+            <div class="divider"></div>
+            
             <div class="footer">
-                <p>Thank you for your business!</p>
+                <p><strong>Thank you for your business!</strong></p>
                 <p><?= htmlspecialchars($company_details['name']) ?></p>
-                <p>Date: <?= date('Y-m-d H:i:s') ?></p>
+                <p>Date Printed: <?= date('Y-m-d H:i:s') ?></p>
             </div>
         </div>
     </body>
@@ -162,29 +234,114 @@ function generateReceiptHTML($receipt_number, $transaction, $items, $company_det
 }
 
 /**
- * Save receipt details after successful sale
+ * Generate receipt preview HTML
  */
-function saveReceipt($transaction_id, $receipt_number, $user_id, $db) {
+function generateReceiptPreview($receipt_number, $transaction_data, $items, $company_details, $subtotal, $discount, $total) {
+    ob_start();
+    ?>
+    <div class="receipt-preview-content">
+        <!-- Company Header -->
+        <div class="receipt-company">
+            <h4 class="mb-2"><?= htmlspecialchars($company_details['name']) ?></h4>
+            <p class="text-muted mb-1"><?= htmlspecialchars($company_details['address']) ?></p>
+            <p class="text-muted mb-1">Tel: <?= htmlspecialchars($company_details['phone']) ?></p>
+            <p class="text-muted mb-0">Email: <?= htmlspecialchars($company_details['email']) ?></p>
+        </div>
+        
+        <!-- Receipt Info -->
+        <div class="receipt-info">
+            <div class="receipt-info-row">
+                <span><strong>Receipt #:</strong></span>
+                <span><?= htmlspecialchars($receipt_number) ?></span>
+            </div>
+            <div class="receipt-info-row">
+                <span><strong>Date:</strong></span>
+                <span><?= date('Y-m-d H:i:s') ?></span>
+            </div>
+            <?php if (!empty($transaction_data['customer_name'])): ?>
+            <div class="receipt-info-row">
+                <span><strong>Customer:</strong></span>
+                <span><?= htmlspecialchars($transaction_data['customer_name']) ?></span>
+            </div>
+            <?php endif; ?>
+            <div class="receipt-info-row">
+                <span><strong>Payment:</strong></span>
+                <span class="text-uppercase"><?= htmlspecialchars($transaction_data['payment_method']) ?></span>
+            </div>
+        </div>
+        
+        <!-- Items Table -->
+        <table class="receipt-items-table">
+            <thead>
+                <tr>
+                    <th>Item</th>
+                    <th>Qty</th>
+                    <th>Price</th>
+                    <th>Total</th>
+                </tr>
+            </thead>
+            <tbody>
+                <?php foreach ($items as $item): ?>
+                <tr>
+                    <td>
+                        <div class="fw-semibold"><?= htmlspecialchars($item['name']) ?></div>
+                        <small class="text-muted"><?= htmlspecialchars($item['sku']) ?></small>
+                    </td>
+                    <td style="text-align: center;"><?= $item['quantity'] ?></td>
+                    <td style="text-align: right;">KSh <?= number_format($item['selling_price'], 2) ?></td>
+                    <td style="text-align: right;">KSh <?= number_format($item['selling_price'] * $item['quantity'], 2) ?></td>
+                </tr>
+                <?php endforeach; ?>
+            </tbody>
+        </table>
+        
+        <!-- Totals -->
+        <div class="receipt-totals-section">
+            <div class="receipt-totals-row">
+                <span>Subtotal:</span>
+                <span>KSh <?= number_format($subtotal, 2) ?></span>
+            </div>
+            <?php if ($discount > 0): ?>
+            <div class="receipt-totals-row">
+                <span>Discount:</span>
+                <span>- KSh <?= number_format($discount, 2) ?></span>
+            </div>
+            <?php endif; ?>
+            <div class="receipt-grand-total">
+                <span>TOTAL:</span>
+                <span>KSh <?= number_format($total, 2) ?></span>
+            </div>
+        </div>
+        
+        <!-- Footer -->
+        <div class="receipt-footer">
+            <p class="mb-1">Thank you for your business!</p>
+            <p class="mb-0"><?= htmlspecialchars($company_details['name']) ?></p>
+            <p class="mb-0">Date Previewed: <?= date('Y-m-d H:i:s') ?></p>
+        </div>
+    </div>
+    <?php
+    return ob_get_clean();
+}
+
+/**
+ * Save receipt details
+ */
+function saveReceipt($transaction_id, $receipt_number, $user_id, $db, $period_id = null) {
     try {
-        // Get transaction details
         $transaction_sql = "SELECT t.*, u.name as seller_name, c.name as customer_name, 
-                                   c.phone as customer_phone, c.email as customer_email,
-                                   tp.id as period_id
+                                   c.phone as customer_phone, c.email as customer_email
                           FROM transactions t
                           LEFT JOIN users u ON t.user_id = u.id
                           LEFT JOIN customers c ON t.customer_id = c.id
-                          LEFT JOIN time_periods tp ON t.time_period_id = tp.id
                           WHERE t.id = ?";
         $stmt = $db->prepare($transaction_sql);
         $stmt->bind_param("i", $transaction_id);
         $stmt->execute();
         $transaction = $stmt->get_result()->fetch_assoc();
         
-        if (!$transaction) {
-            throw new Exception("Transaction not found");
-        }
+        if (!$transaction) throw new Exception("Transaction not found");
         
-        // Get transaction items
         $items_sql = "SELECT ti.*, p.name as product_name, p.sku 
                      FROM transaction_items ti
                      JOIN products p ON ti.product_id = p.id
@@ -206,7 +363,6 @@ function saveReceipt($transaction_id, $receipt_number, $user_id, $db) {
             ];
         }
         
-        // Company details
         $company_details = [
             'name' => 'Vinmel Irrigation',
             'address' => 'Nairobi, Kenya',
@@ -214,15 +370,12 @@ function saveReceipt($transaction_id, $receipt_number, $user_id, $db) {
             'email' => 'info@vinmel.com'
         ];
         
-        // Generate receipt HTML
         $receipt_html = generateReceiptHTML($receipt_number, $transaction, $items, $company_details);
         
-        // Save to receipts table (check if table exists first)
         $table_check = "SHOW TABLES LIKE 'receipts'";
         $table_exists = $db->query($table_check)->num_rows > 0;
         
         if (!$table_exists) {
-            // Create receipts table if it doesn't exist
             $create_table = "CREATE TABLE IF NOT EXISTS `receipts` (
                 `id` int(11) NOT NULL AUTO_INCREMENT,
                 `transaction_id` int(11) NOT NULL,
@@ -233,15 +386,14 @@ function saveReceipt($transaction_id, $receipt_number, $user_id, $db) {
                 `seller_id` int(11) NOT NULL,
                 `seller_name` varchar(100) NOT NULL,
                 `total_amount` decimal(10,2) NOT NULL,
-                `tax_amount` decimal(10,2) DEFAULT 0.00,
                 `discount_amount` decimal(10,2) DEFAULT 0.00,
                 `net_amount` decimal(10,2) NOT NULL,
-                `payment_method` enum('cash','card','mobile','bank') DEFAULT 'cash',
+                `payment_method` enum('cash','mpesa') DEFAULT 'cash',
                 `transaction_date` datetime NOT NULL,
-                `items_json` text NOT NULL COMMENT 'JSON array of items purchased',
-                `receipt_html` text NOT NULL COMMENT 'HTML format of receipt for printing/viewing',
+                `items_json` text NOT NULL,
+                `receipt_html` text NOT NULL,
                 `period_id` int(11) DEFAULT NULL,
-                `company_details` text DEFAULT NULL COMMENT 'JSON of company details at time of sale',
+                `company_details` text DEFAULT NULL,
                 `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
                 PRIMARY KEY (`id`),
                 UNIQUE KEY `receipt_number` (`receipt_number`),
@@ -249,25 +401,24 @@ function saveReceipt($transaction_id, $receipt_number, $user_id, $db) {
                 KEY `seller_id` (`seller_id`),
                 KEY `period_id` (`period_id`),
                 KEY `transaction_date` (`transaction_date`)
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci";
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4";
             
             if (!$db->query($create_table)) {
                 throw new Exception("Failed to create receipts table: " . $db->error);
             }
         }
         
-        // Insert receipt
         $insert_sql = "INSERT INTO receipts (
             transaction_id, receipt_number, customer_name, customer_phone, customer_email,
-            seller_id, seller_name, total_amount, tax_amount, discount_amount, net_amount,
+            seller_id, seller_name, total_amount, discount_amount, net_amount,
             payment_method, transaction_date, items_json, receipt_html, period_id, company_details
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
         
         $insert_stmt = $db->prepare($insert_sql);
         $items_json = json_encode($items);
         $company_json = json_encode($company_details);
         $insert_stmt->bind_param(
-            "issssiddddsssssis",
+            "issssiddddssssis",
             $transaction_id,
             $receipt_number,
             $transaction['customer_name'],
@@ -276,14 +427,13 @@ function saveReceipt($transaction_id, $receipt_number, $user_id, $db) {
             $user_id,
             $transaction['seller_name'],
             $transaction['total_amount'],
-            $transaction['tax_amount'],
             $transaction['discount_amount'],
             $transaction['net_amount'],
             $transaction['payment_method'],
             $transaction['transaction_date'],
             $items_json,
             $receipt_html,
-            $transaction['period_id'],
+            $period_id,
             $company_json
         );
         
@@ -293,6 +443,61 @@ function saveReceipt($transaction_id, $receipt_number, $user_id, $db) {
         error_log("Error saving receipt: " . $e->getMessage());
         return false;
     }
+}
+
+/* -------------------------------------------------------
+   HANDLE PRINT RECEIPT REQUEST
+-------------------------------------------------------- */
+
+if ($is_print_request) {
+    $receipt_number = $_GET['receipt_number'];
+    
+    $sql = "SELECT receipt_html FROM receipts WHERE receipt_number = ?";
+    $stmt = $db->prepare($sql);
+    $stmt->bind_param("s", $receipt_number);
+    $stmt->execute();
+    $result = $stmt->get_result();
+    
+    if ($result->num_rows > 0) {
+        $receipt = $result->fetch_assoc();
+        echo $receipt['receipt_html'];
+        exit();
+    } else {
+        // Fallback: generate receipt from session
+        if (isset($_SESSION['last_receipt_data'])) {
+            $data = $_SESSION['last_receipt_data'];
+            
+            // Create transaction data structure
+            $transaction_data = [
+                'transaction_date' => date('Y-m-d H:i:s'),
+                'customer_name' => $data['customer_name'] ?? null,
+                'seller_name' => $_SESSION['name'] ?? 'Seller',
+                'payment_method' => $data['payment_method'] ?? 'cash',
+                'total_amount' => $data['subtotal'] ?? 0,
+                'discount_amount' => $data['discount'] ?? 0,
+                'net_amount' => $data['total'] ?? 0
+            ];
+            
+            // Create items array
+            $items = [];
+            foreach ($data['items'] as $item) {
+                $items[] = [
+                    'product_name' => $item['name'],
+                    'sku' => $item['sku'],
+                    'quantity' => $item['quantity'],
+                    'unit_price' => $item['selling_price'],
+                    'total_price' => $item['selling_price'] * $item['quantity']
+                ];
+            }
+            
+            echo generateReceiptHTML($receipt_number, $transaction_data, $items, $company_details);
+            exit();
+        }
+    }
+    
+    // If nothing found, show error
+    echo "<html><body><h1>Receipt not found</h1></body></html>";
+    exit();
 }
 
 /* -------------------------------------------------------
@@ -307,33 +512,29 @@ if (!isset($_SESSION['pos_cart'])) {
     $_SESSION['pos_payment_method'] = 'cash';
 }
 
-// Handle add to cart
+// Handle add to cart with quantity
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_to_cart'])) {
     $product_id = intval($_POST['product_id']);
-    $quantity = intval($_POST['quantity']);
+    $quantity = intval($_POST['quantity']) ?? 1;
     
-    // Validate quantity
     if ($quantity <= 0) {
         $error = "Quantity must be greater than 0!";
     } else {
-        // Get product details - REMOVED created_by filter
         $sql = "SELECT p.*, c.name as category_name 
                 FROM products p 
                 LEFT JOIN categories c ON p.category_id = c.id 
-                WHERE p.id = ?"; // Removed: AND p.created_by = ?
+                WHERE p.id = ?";
         $stmt = $db->prepare($sql);
-        $stmt->bind_param("i", $product_id); // Only product_id
+        $stmt->bind_param("i", $product_id);
         $stmt->execute();
         $result = $stmt->get_result();
         
         if ($result->num_rows > 0) {
             $product = $result->fetch_assoc();
             
-            // Check stock availability
             if ($product['stock_quantity'] < $quantity) {
                 $error = "Insufficient stock! Only {$product['stock_quantity']} units available.";
             } else {
-                // Add to cart or update quantity
                 if (isset($_SESSION['pos_cart'][$product_id])) {
                     $_SESSION['pos_cart'][$product_id]['quantity'] += $quantity;
                 } else {
@@ -342,10 +543,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_to_cart'])) {
                         'sku' => $product['sku'],
                         'selling_price' => $product['selling_price'],
                         'quantity' => $quantity,
-                        'category' => $product['category_name']
+                        'category' => $product['category_name'],
+                        'description' => $product['description'] ?? ''
                     ];
                 }
-                $message = "{$product['name']} added to cart!";
+                $message = "{$product['name']} (x{$quantity}) added to cart!";
             }
         } else {
             $error = "Product not found!";
@@ -359,14 +561,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_cart'])) {
     $quantity = intval($_POST['quantity']);
     
     if ($quantity <= 0) {
-        // Remove item if quantity is 0
         unset($_SESSION['pos_cart'][$product_id]);
         $message = "Item removed from cart!";
     } else {
-        // Update quantity
         if (isset($_SESSION['pos_cart'][$product_id])) {
-            $_SESSION['pos_cart'][$product_id]['quantity'] = $quantity;
-            $message = "Cart updated!";
+            // Check stock
+            $sql = "SELECT stock_quantity FROM products WHERE id = ?";
+            $stmt = $db->prepare($sql);
+            $stmt->bind_param("i", $product_id);
+            $stmt->execute();
+            $result = $stmt->get_result();
+            $product = $result->fetch_assoc();
+            
+            if ($product['stock_quantity'] >= $quantity) {
+                $_SESSION['pos_cart'][$product_id]['quantity'] = $quantity;
+                $message = "Cart updated!";
+            } else {
+                $error = "Insufficient stock! Only {$product['stock_quantity']} units available.";
+            }
         }
     }
 }
@@ -414,159 +626,83 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_payment_method
     $message = "Payment method updated!";
 }
 
-// Handle complete sale
+// Handle complete sale with receipt preview
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['complete_sale'])) {
-    // Validate cart
     if (empty($_SESSION['pos_cart'])) {
         $error = "Cart is empty! Add products to complete sale.";
     } else {
         // Calculate totals
         $subtotal = 0;
-        foreach ($_SESSION['pos_cart'] as $item) {
-            $subtotal += $item['selling_price'] * $item['quantity'];
+        $cart_items_detail = [];
+        foreach ($_SESSION['pos_cart'] as $product_id => $item) {
+            $item_total = $item['selling_price'] * $item['quantity'];
+            $subtotal += $item_total;
+            $cart_items_detail[] = [
+                'name' => $item['name'],
+                'sku' => $item['sku'],
+                'selling_price' => $item['selling_price'],
+                'quantity' => $item['quantity']
+            ];
         }
         
         $discount_amount = $_SESSION['pos_discount'];
-        $tax_rate = 0.16; // 16% VAT
-        $tax_amount = ($subtotal - $discount_amount) * $tax_rate;
-        $net_amount = $subtotal - $discount_amount + $tax_amount;
+        $net_amount = $subtotal - $discount_amount;
         
         // Generate receipt number
         $receipt_number = 'RCP' . date('Ymd') . str_pad(mt_rand(1, 999), 3, '0', STR_PAD_LEFT);
         
-        // Store the sale amount for display BEFORE clearing cart
-        $last_sale_amount = $net_amount;
+        // Store for receipt preview
+        $_SESSION['last_receipt_preview'] = [
+            'receipt_number' => $receipt_number,
+            'subtotal' => $subtotal,
+            'discount' => $discount_amount,
+            'total' => $net_amount,
+            'customer_name' => $_SESSION['pos_customer']['name'] ?? null,
+            'payment_method' => $_SESSION['pos_payment_method'],
+            'items' => $cart_items_detail
+        ];
+        
+        // Show receipt preview popup
+        $show_receipt_preview = true;
+    }
+}
+
+// Handle confirm sale after preview
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['confirm_sale'])) {
+    if (isset($_SESSION['last_receipt_preview'])) {
+        $receipt_data = $_SESSION['last_receipt_preview'];
+        $receipt_number = $receipt_data['receipt_number'];
         
         // Start transaction
         $db->begin_transaction();
         
         try {
-            // First, let's examine the actual structure of the transactions table
-            $table_structure_sql = "DESCRIBE transactions";
-            $table_result = $db->query($table_structure_sql);
-            $table_columns = [];
-            while ($row = $table_result->fetch_assoc()) {
-                $table_columns[] = $row['Field'];
-            }
+            // Get period ID if exists
+            $period_id = $current_period ? $current_period['id'] : null;
             
-            // Build the SQL query dynamically based on actual table structure
-            $columns = [];
-            $placeholders = [];
-            $bind_types = "";
-            $bind_values = [];
-            
-            // Always include these columns
-            $columns[] = 'receipt_number';
-            $placeholders[] = '?';
-            $bind_types .= "s";
-            $bind_values[] = $receipt_number;
-            
-            // Check if customer_id exists and include it
-            if (in_array('customer_id', $table_columns)) {
-                $columns[] = 'customer_id';
-                $placeholders[] = '?';
-                $bind_types .= "i";
-                $customer_id = NULL;
-                $bind_values[] = $customer_id;
-            }
-            
-            // Include user_id
-            $columns[] = 'user_id';
-            $placeholders[] = '?';
-            $bind_types .= "i";
-            $bind_values[] = $user_id;
-            
-            // Include time_period_id if it exists
-            if (in_array('time_period_id', $table_columns)) {
-                $columns[] = 'time_period_id';
-                $placeholders[] = '?';
-                $bind_types .= "i";
-                $period_id = $current_period ? $current_period['id'] : NULL;
-                $bind_values[] = $period_id;
-            }
-            
-            // Include amount fields
-            $amount_fields = ['total_amount', 'tax_amount', 'discount_amount', 'net_amount'];
-            foreach ($amount_fields as $field) {
-                if (in_array($field, $table_columns)) {
-                    $columns[] = $field;
-                    $placeholders[] = '?';
-                    $bind_types .= "d";
-                    // Assign values based on field name
-                    switch($field) {
-                        case 'total_amount': 
-                            $value = $subtotal;
-                            break;
-                        case 'tax_amount': 
-                            $value = $tax_amount;
-                            break;
-                        case 'discount_amount': 
-                            $value = $discount_amount;
-                            break;
-                        case 'net_amount': 
-                            $value = $net_amount;
-                            break;
-                        default:
-                            $value = 0;
-                    }
-                    $bind_values[] = $value;
-                }
-            }
-            
-            // Include payment_method
-            if (in_array('payment_method', $table_columns)) {
-                $columns[] = 'payment_method';
-                $placeholders[] = '?';
-                $bind_types .= "s";
-                $payment_method = $_SESSION['pos_payment_method'];
-                $bind_values[] = $payment_method;
-            }
-            
-            // Include transaction_date (use NOW() for MySQL)
-            $columns[] = 'transaction_date';
-            $placeholders[] = 'NOW()';
-            
-            // Build the final SQL
-            $transaction_sql = "INSERT INTO transactions (" . implode(', ', $columns) . ") 
-                               VALUES (" . implode(', ', $placeholders) . ")";
+            // Insert transaction
+            $transaction_sql = "INSERT INTO transactions (
+                receipt_number, user_id, total_amount, discount_amount, net_amount, 
+                payment_method, transaction_date, time_period_id
+            ) VALUES (?, ?, ?, ?, ?, ?, NOW(), ?)";
             
             $transaction_stmt = $db->prepare($transaction_sql);
-            
-            if (!$transaction_stmt) {
-                throw new Exception("Failed to prepare transaction statement: " . $db->error);
-            }
-            
-            // Bind parameters
-            $transaction_stmt->bind_param($bind_types, ...$bind_values);
+            $transaction_stmt->bind_param(
+                "sidddsi",
+                $receipt_number,
+                $user_id,
+                $receipt_data['subtotal'],
+                $receipt_data['discount'],
+                $receipt_data['total'],
+                $receipt_data['payment_method'],
+                $period_id
+            );
             
             if (!$transaction_stmt->execute()) {
-                throw new Exception("Failed to create transaction: " . $db->error);
+                throw new Exception("Failed to create transaction: " . $transaction_stmt->error);
             }
             
             $transaction_id = $db->insert_id;
-            
-            // Check if transaction_items table exists, create if not
-            $check_items_table = "SHOW TABLES LIKE 'transaction_items'";
-            $items_table_exists = $db->query($check_items_table) && $db->query($check_items_table)->num_rows > 0;
-            
-            if (!$items_table_exists) {
-                // Create transaction_items table
-                $create_items_table = "CREATE TABLE IF NOT EXISTS transaction_items (
-                    id INT PRIMARY KEY AUTO_INCREMENT,
-                    transaction_id INT NOT NULL,
-                    product_id INT NOT NULL,
-                    quantity INT NOT NULL,
-                    unit_price DECIMAL(10,2) NOT NULL,
-                    total_price DECIMAL(10,2) NOT NULL,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    FOREIGN KEY (transaction_id) REFERENCES transactions(id) ON DELETE CASCADE,
-                    FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
-                )";
-                
-                if (!$db->query($create_items_table)) {
-                    throw new Exception("Failed to create transaction_items table: " . $db->error);
-                }
-            }
             
             // Insert transaction items and update stock
             foreach ($_SESSION['pos_cart'] as $product_id => $item) {
@@ -585,27 +721,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['complete_sale'])) {
                 );
                 
                 if (!$item_stmt->execute()) {
-                    throw new Exception("Failed to add transaction item: " . $db->error);
+                    throw new Exception("Failed to add transaction item: " . $item_stmt->error);
                 }
                 
-                // Update product stock - REMOVED created_by restriction
+                // Update product stock
                 $update_stock_sql = "UPDATE products SET stock_quantity = stock_quantity - ? WHERE id = ?";
                 $update_stmt = $db->prepare($update_stock_sql);
                 $update_stmt->bind_param("ii", $item['quantity'], $product_id);
                 
                 if (!$update_stmt->execute()) {
-                    throw new Exception("Failed to update product stock: " . $db->error);
+                    throw new Exception("Failed to update product stock: " . $update_stmt->error);
                 }
             }
             
-            // Commit transaction
-            $db->commit();
-            
-            // SAVE RECEIPT TO RECEIPTS TABLE
-            $receipt_saved = saveReceipt($transaction_id, $receipt_number, $user_id, $db);
+            // Save receipt
+            $receipt_saved = saveReceipt($transaction_id, $receipt_number, $user_id, $db, $period_id);
             
             if ($receipt_saved) {
-                // Get the receipt ID that was just created
                 $receipt_sql = "SELECT id FROM receipts WHERE receipt_number = ?";
                 $receipt_stmt = $db->prepare($receipt_sql);
                 $receipt_stmt->bind_param("s", $receipt_number);
@@ -616,32 +748,50 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['complete_sale'])) {
                 $receipt_id = $receipt_data['id'] ?? 0;
                 
                 $message = "Sale completed successfully! Receipt: $receipt_number";
+                
+                // Store for printing
+                $_SESSION['last_receipt_data'] = array_merge($_SESSION['last_receipt_preview'], [
+                    'transaction_id' => $transaction_id
+                ]);
+                
+                // Clear receipt preview
+                unset($_SESSION['last_receipt_preview']);
             } else {
                 $message = "Sale completed but receipt saving failed! Transaction ID: $transaction_id";
             }
             
-            // Clear cart and reset customer for next sale
+            // Commit transaction
+            $db->commit();
+            
+            // Clear cart
             $_SESSION['pos_cart'] = [];
             $_SESSION['pos_discount'] = 0;
-            $_SESSION['pos_customer'] = null; // Reset customer for next sale
+            $_SESSION['pos_customer'] = null;
             
         } catch (Exception $e) {
             $db->rollback();
             $error = "Transaction failed: " . $e->getMessage();
+            unset($_SESSION['last_receipt_preview']);
         }
     }
+}
+
+// Handle cancel sale
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['cancel_sale'])) {
+    unset($_SESSION['last_receipt_preview']);
+    $message = "Sale cancelled. Cart preserved.";
 }
 
 // Handle clear cart
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['clear_cart'])) {
     $_SESSION['pos_cart'] = [];
     $_SESSION['pos_discount'] = 0;
-    $_SESSION['pos_customer'] = null; // Also clear customer when clearing cart
+    $_SESSION['pos_customer'] = null;
     $message = "Cart cleared!";
 }
 
 /* -------------------------------------------------------
-   FETCH PRODUCTS FOR POS - SHOWS ALL PRODUCTS
+   FETCH PRODUCTS
 -------------------------------------------------------- */
 
 $sql = "SELECT p.*, c.name as category_name, u.name as creator_name
@@ -654,7 +804,7 @@ $stmt = $db->prepare($sql);
 $stmt->execute();
 $products = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
 
-// Calculate cart totals for display
+// Calculate cart totals
 $cart_total = 0;
 $cart_items = 0;
 foreach ($_SESSION['pos_cart'] as $item) {
@@ -662,11 +812,8 @@ foreach ($_SESSION['pos_cart'] as $item) {
     $cart_items += $item['quantity'];
 }
 
-// Use different variable names for display to avoid conflicts
 $display_discount = $_SESSION['pos_discount'];
-$tax_rate = 0.16;
-$display_tax = ($cart_total - $display_discount) * $tax_rate;
-$display_net = $cart_total - $display_discount + $display_tax;
+$display_net = $cart_total - $display_discount;
 $display_cart_total = $cart_total;
 ?>
 
@@ -679,165 +826,7 @@ $display_cart_total = $cart_total;
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <link href="style.css" rel="stylesheet">
-    <style>
-        .pos-container {
-            display: flex;
-            gap: 20px;
-            min-height: 70vh;
-        }
-        .products-section {
-            flex: 3;
-            background: #f8f9fa;
-            border-radius: 10px;
-            padding: 20px;
-        }
-        .cart-sidebar {
-            flex: 1;
-            background: white;
-            border-radius: 10px;
-            padding: 20px;
-            box-shadow: 0 0 10px rgba(0,0,0,0.1);
-        }
-        .products-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-            gap: 15px;
-            margin-top: 20px;
-        }
-        .product-card {
-            background: white;
-            border-radius: 8px;
-            padding: 15px;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
-            transition: transform 0.2s;
-        }
-        .product-card:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 4px 10px rgba(0,0,0,0.15);
-        }
-        .pos-search {
-            flex: 1;
-        }
-        .category-filter {
-            display: flex;
-            gap: 10px;
-            flex-wrap: wrap;
-            margin: 15px 0;
-        }
-        .category-btn {
-            padding: 5px 15px;
-            border: 1px solid #ddd;
-            border-radius: 20px;
-            background: white;
-            cursor: pointer;
-        }
-        .category-btn.active {
-            background: #007bff;
-            color: white;
-            border-color: #007bff;
-        }
-        .cart-header {
-            border-bottom: 2px solid #007bff;
-            padding-bottom: 10px;
-            margin-bottom: 20px;
-        }
-        .cart-items {
-            max-height: 300px;
-            overflow-y: auto;
-            margin-bottom: 20px;
-        }
-        .cart-item {
-            display: flex;
-            justify-content: space-between;
-            align-items: start;
-            padding: 10px;
-            border-bottom: 1px solid #eee;
-        }
-        .quantity-controls {
-            display: flex;
-            align-items: center;
-            gap: 5px;
-        }
-        .quantity-btn {
-            width: 30px;
-            height: 30px;
-            border: 1px solid #ddd;
-            border-radius: 50%;
-            background: white;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-        .cart-summary {
-            border-top: 2px solid #eee;
-            padding-top: 20px;
-        }
-        .summary-row {
-            display: flex;
-            justify-content: space-between;
-            margin-bottom: 10px;
-        }
-        .summary-total {
-            font-size: 1.2rem;
-            font-weight: bold;
-            border-top: 2px solid #007bff;
-            padding-top: 10px;
-            margin-top: 10px;
-        }
-        .action-buttons {
-            display: flex;
-            gap: 10px;
-            margin-top: 20px;
-        }
-        .action-buttons .btn {
-            flex: 1;
-        }
-        .receipt-success {
-            text-align: center;
-            padding: 30px;
-            background: #d4edda;
-            border-radius: 10px;
-            margin-bottom: 20px;
-        }
-        .receipt-details {
-            background: white;
-            padding: 20px;
-            border-radius: 10px;
-            margin: 20px auto;
-            max-width: 400px;
-            box-shadow: 0 0 10px rgba(0,0,0,0.1);
-        }
-        .payment-methods {
-            display: flex;
-            gap: 10px;
-            flex-wrap: wrap;
-        }
-        .payment-btn {
-            padding: 5px 15px;
-            border: 1px solid #ddd;
-            border-radius: 20px;
-            background: white;
-            cursor: pointer;
-        }
-        .payment-btn.active {
-            background: #28a745;
-            color: white;
-            border-color: #28a745;
-        }
-        .creator-info {
-            font-size: 0.75rem;
-            color: #6c757d;
-            margin-bottom: 5px;
-        }
-        .admin-product-indicator {
-            background-color: #dc3545;
-            color: white;
-            font-size: 0.6rem;
-            padding: 1px 4px;
-            border-radius: 3px;
-            margin-left: 5px;
-        }
-    </style>
+ 
 </head>
 <body>
     <?php include 'nav_bar.php'; ?>
@@ -848,24 +837,24 @@ $display_cart_total = $cart_total;
         <div class="content-area">
             <div class="container-fluid">
                 <!-- Page Header -->
-                <div class="dashboard-header">
+                <div class="dashboard-header mb-4">
                     <div>
                         <h1 class="h2">
                             <i class="fas fa-cash-register me-2"></i>
                             POS System
                         </h1>
-                        <p class="lead mb-0">Point of Sale - Sell products from all sellers</p>
+                        <p class="lead mb-0">Professional Point of Sale</p>
                     </div>
                     <div class="text-end">
                         <?php if ($current_period): ?>
                             <div class="badge bg-primary fs-6 p-2">
                                 <i class="fas fa-calendar me-1"></i>
-                                Period: <?= $current_period['period_name'] ?>
+                                <?= $current_period['period_name'] ?>
                             </div>
                         <?php endif; ?>
                         <div class="badge bg-success fs-6 p-2 ms-2">
                             <i class="fas fa-shopping-cart me-1"></i>
-                            <?= $cart_items ?> items
+                            <?= $cart_items ?> item<?= $cart_items != 1 ? 's' : '' ?>
                         </div>
                     </div>
                 </div>
@@ -885,88 +874,58 @@ $display_cart_total = $cart_total;
                     </div>
                 <?php endif; ?>
 
-                <!-- Receipt Success -->
-                <?php if ($receipt_number): ?>
-                    <div class="receipt-success">
-                        <i class="fas fa-receipt fa-3x mb-3"></i>
-                        <h3>Sale Completed Successfully!</h3>
-                        <p class="mb-2">Receipt Number: <strong><?= $receipt_number ?></strong></p>
-                        <p class="mb-3">Total Amount: <strong>KSH <?= number_format($last_sale_amount, 2) ?></strong></p>
-                        
-                        <!-- Printable Receipt -->
-                        <div class="receipt-details" id="receiptContent">
-                            <div class="receipt-header">
-                                <h4 class="mb-2"><?= $company_details['name'] ?></h4>
-                                <p class="mb-1"><?= $company_details['address'] ?></p>
-                                <p class="mb-1">Tel: <?= $company_details['phone'] ?></p>
-                                <p class="mb-0">Email: <?= $company_details['email'] ?></p>
-                            </div>
-                            
-                            <div class="receipt-items">
-                                <div class="d-flex justify-content-between mb-2">
-                                    <span><strong>Receipt:</strong> <?= $receipt_number ?></span>
-                                    <span><strong>Date:</strong> <?= date('Y-m-d H:i:s') ?></span>
+                <!-- Receipt Preview Modal -->
+                <?php if (isset($show_receipt_preview) && $show_receipt_preview && isset($_SESSION['last_receipt_preview'])): 
+                    $receipt_data = $_SESSION['last_receipt_preview'];
+                ?>
+                    <div class="modal fade show" id="receiptModal" tabindex="-1" style="display: block; background: rgba(0,0,0,0.5);">
+                        <div class="modal-dialog modal-lg">
+                            <div class="modal-content">
+                                <div class="modal-header">
+                                    <h5 class="modal-title">
+                                        <i class="fas fa-receipt me-2"></i>
+                                        Receipt Preview
+                                    </h5>
+                                    <button type="button" class="btn-close" onclick="closeReceiptModal()"></button>
                                 </div>
-                                <div class="mb-2">
-                                    <strong>Items Sold:</strong>
-                                </div>
-                                <?php 
-                                // We need to reconstruct the cart items from the transaction
-                                $items_sql = "SELECT ti.*, p.name, p.sku 
-                                            FROM transaction_items ti 
-                                            JOIN products p ON ti.product_id = p.id 
-                                            WHERE ti.transaction_id = (SELECT id FROM transactions WHERE receipt_number = ?)";
-                                $items_stmt = $db->prepare($items_sql);
-                                $items_stmt->bind_param("s", $receipt_number);
-                                $items_stmt->execute();
-                                $sold_items = $items_stmt->get_result()->fetch_all(MYSQLI_ASSOC);
-                                ?>
-                                
-                                <?php foreach ($sold_items as $item): ?>
-                                    <div class="d-flex justify-content-between border-bottom pb-1 mb-1">
-                                        <div>
-                                            <div><?= htmlspecialchars($item['name']) ?></div>
-                                            <small class="text-muted">Qty: <?= $item['quantity'] ?> × KSH <?= number_format($item['unit_price'], 2) ?></small>
-                                        </div>
-                                        <div>KSH <?= number_format($item['total_price'], 2) ?></div>
+                                <div class="modal-body">
+                                    <div class="alert alert-info mb-3">
+                                        <i class="fas fa-info-circle me-2"></i>
+                                        Review the receipt below before completing the sale.
                                     </div>
-                                <?php endforeach; ?>
+                                    
+                                    <div class="receipt-preview">
+                                        <?= generateReceiptPreview(
+                                            $receipt_data['receipt_number'],
+                                            [
+                                                'customer_name' => $receipt_data['customer_name'],
+                                                'payment_method' => $receipt_data['payment_method']
+                                            ],
+                                            $receipt_data['items'],
+                                            $company_details,
+                                            $receipt_data['subtotal'],
+                                            $receipt_data['discount'],
+                                            $receipt_data['total']
+                                        ) ?>
+                                    </div>
+                                    
+                                    <div class="receipt-actions">
+                                        <form method="POST" class="d-inline">
+                                            <button type="submit" name="cancel_sale" class="btn btn-outline-secondary">
+                                                <i class="fas fa-times me-2"></i>Cancel
+                                            </button>
+                                        </form>
+                                        <button type="button" class="btn btn-success" onclick="printReceiptPreview('<?= $receipt_data['receipt_number'] ?>')">
+                                            <i class="fas fa-print me-2"></i>Print
+                                        </button>
+                                        <form method="POST" class="d-inline">
+                                            <button type="submit" name="confirm_sale" class="btn btn-primary">
+                                                <i class="fas fa-check me-2"></i>Confirm & Save
+                                            </button>
+                                        </form>
+                                    </div>
+                                </div>
                             </div>
-                            
-                            <div class="receipt-totals">
-                                <div class="d-flex justify-content-between">
-                                    <span>Subtotal:</span>
-                                    <span>KSH <?= number_format($last_sale_amount / 1.16, 2) ?></span>
-                                </div>
-                                <div class="d-flex justify-content-between">
-                                    <span>VAT (16%):</span>
-                                    <span>KSH <?= number_format(($last_sale_amount / 1.16) * 0.16, 2) ?></span>
-                                </div>
-                                <div class="d-flex justify-content-between fw-bold fs-5">
-                                    <span>Total:</span>
-                                    <span>KSH <?= number_format($last_sale_amount, 2) ?></span>
-                                </div>
-                                <div class="d-flex justify-content-between mt-2">
-                                    <span>Payment Method:</span>
-                                    <span class="text-uppercase"><?= $_SESSION['pos_payment_method'] ?></span>
-                                </div>
-                            </div>
-                            
-                            <div class="text-center mt-3 pt-3 border-top">
-                                <p class="mb-1">Thank you for your business!</p>
-                                <p class="mb-0 text-muted"><?= $company_details['name'] ?></p>
-                            </div>
-                        </div>
-                        
-                        <div class="action-buttons mt-3">
-                            <button class="btn btn-primary" onclick="printReceipt()">
-                                <i class="fas fa-print me-2"></i>Print Receipt
-                            </button>
-                            <?php if ($receipt_id > 0): ?>
-                            <button class="btn btn-success" onclick="window.location.href='view_receipt.php?id=<?= $receipt_id ?>'">
-                                <i class="fas fa-eye me-2"></i>View Saved Receipt
-                            </button>
-                            <?php endif; ?>
                         </div>
                     </div>
                 <?php endif; ?>
@@ -978,126 +937,113 @@ $display_cart_total = $cart_total;
                 <div class="pos-container">
                     <!-- Products Section -->
                     <div class="products-section">
-                        <!-- Search and Filters -->
-                        <div class="d-flex gap-2 mb-3">
-                            <input type="text" id="productSearch" class="form-control pos-search" placeholder="Search products...">
-                            <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#customerModal">
-                                <i class="fas fa-user me-2"></i>Customer
-                            </button>
-                        </div>
-
-                        <!-- Category Filters -->
-                        <div class="category-filter">
-                            <button class="category-btn active" data-category="all">All Products</button>
-                            <?php
-                            $categories = [];
-                            foreach ($products as $product) {
-                                $categories[$product['category_name']] = $product['category_name'];
-                            }
-                            foreach ($categories as $category): ?>
-                                <button class="category-btn" data-category="<?= htmlspecialchars($category) ?>">
-                                    <?= htmlspecialchars($category) ?>
+                        <!-- Search and Filter -->
+                        <div class="pos-search-container">
+                            <div class="d-flex gap-2 mb-3">
+                                <input type="text" id="productSearch" class="form-control pos-search" 
+                                       placeholder="Search products by name or SKU...">
+                                <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#customerModal">
+                                    <i class="fas fa-user me-2"></i>Customer
                                 </button>
-                            <?php endforeach; ?>
+                            </div>
+
+                            <!-- Category Filter -->
+                            <div class="category-filter">
+                                <button class="category-btn active" data-category="all">All Products</button>
+                                <?php
+                                $categories = [];
+                                foreach ($products as $product) {
+                                    $category = $product['category_name'] ?? 'Uncategorized';
+                                    if ($category && !in_array($category, $categories)) {
+                                        $categories[] = $category;
+                                    }
+                                }
+                                sort($categories);
+                                foreach ($categories as $category): ?>
+                                    <button class="category-btn" data-category="<?= htmlspecialchars($category) ?>">
+                                        <?= htmlspecialchars($category) ?>
+                                    </button>
+                                <?php endforeach; ?>
+                            </div>
                         </div>
 
                         <!-- Products Grid -->
                         <div class="products-grid" id="productsGrid">
-                            <?php foreach ($products as $product): ?>
-                                <div class="product-card" 
-                                     data-product-id="<?= $product['id'] ?>" 
-                                     data-category="<?= htmlspecialchars($product['category_name']) ?>"
-                                     data-name="<?= htmlspecialchars(strtolower($product['name'])) ?>"
-                                     data-sku="<?= htmlspecialchars(strtolower($product['sku'])) ?>">
-                                    <div class="text-center mb-2">
-                                        <div class="product-icon bg-primary text-white rounded-circle d-inline-flex align-items-center justify-content-center mb-2" style="width: 50px; height: 50px;">
-                                            <i class="fas fa-box"></i>
-                                        </div>
-                                        <h6 class="mb-1"><?= htmlspecialchars($product['name']) ?></h6>
-                                        <small class="text-muted d-block"><?= htmlspecialchars($product['sku']) ?></small>
-                                        <div class="badge bg-info mb-1"><?= htmlspecialchars($product['category_name']) ?></div>
-                                        <!-- Creator Information -->
-                                        <div class="creator-info mb-1">
-                                            <small>
-                                                <i class="fas fa-user me-1"></i>
-                                                <?= htmlspecialchars($product['creator_name'] ?? 'Unknown') ?>
-                                                <?= $product['created_by'] != $user_id ? '<span class="admin-product-indicator">Shared</span>' : '' ?>
-                                            </small>
-                                        </div>
-                                        <div class="mb-2">
-                                            <strong class="text-success">KSH <?= number_format($product['selling_price'], 2) ?></strong>
-                                        </div>
-                                        <div class="mb-2">
-                                            <span class="badge <?= $product['stock_quantity'] <= $product['min_stock'] ? 'bg-warning' : 'bg-success' ?>">
-                                                Stock: <?= $product['stock_quantity'] ?>
-                                            </span>
-                                        </div>
-                                    </div>
-                                    
-                                    <form method="POST" class="add-to-cart-form">
-                                        <input type="hidden" name="product_id" value="<?= $product['id'] ?>">
-                                        <div class="input-group input-group-sm">
-                                            <input type="number" name="quantity" value="1" min="1" max="<?= $product['stock_quantity'] ?>" 
-                                                   class="form-control" style="max-width: 80px;">
-                                            <button type="submit" name="add_to_cart" class="btn btn-success btn-sm">
-                                                <i class="fas fa-plus"></i>
-                                            </button>
-                                        </div>
-                                    </form>
-                                </div>
-                            <?php endforeach; ?>
-                        </div>
-                    </div>
-
-                    <!-- Cart Sidebar -->
-                    <div class="cart-sidebar">
-                        <div class="cart-header">
-                            <h4 class="mb-0">
-                                <i class="fas fa-shopping-cart me-2"></i>
-                                Shopping Cart
-                            </h4>
-                            <small><?= count($_SESSION['pos_cart']) ?> items in cart</small>
-                        </div>
-
-                        <div class="cart-items">
-                            <?php if (empty($_SESSION['pos_cart'])): ?>
-                                <div class="text-center text-muted py-5">
-                                    <i class="fas fa-shopping-cart fa-3x mb-3"></i>
-                                    <p>Your cart is empty</p>
-                                    <p class="small">Add products from the left panel</p>
+                            <?php if (empty($products)): ?>
+                                <div class="empty-products">
+                                    <i class="fas fa-box-open"></i>
+                                    <p>No products available</p>
+                                    <p class="small">Add products to your inventory first</p>
                                 </div>
                             <?php else: ?>
-                                <?php foreach ($_SESSION['pos_cart'] as $product_id => $item): ?>
-                                    <div class="cart-item">
-                                        <div class="flex-grow-1">
-                                            <h6 class="mb-1"><?= htmlspecialchars($item['name']) ?></h6>
-                                            <small class="text-muted">SKU: <?= htmlspecialchars($item['sku']) ?></small>
-                                            <div class="text-success">KSH <?= number_format($item['selling_price'], 2) ?></div>
-                                        </div>
-                                        <div class="text-end">
-                                            <div class="quantity-controls mb-2">
-                                                <form method="POST" class="d-inline">
-                                                    <input type="hidden" name="product_id" value="<?= $product_id ?>">
-                                                    <input type="hidden" name="quantity" value="<?= $item['quantity'] - 1 ?>">
-                                                    <button type="submit" name="update_cart" class="quantity-btn" 
-                                                            <?= $item['quantity'] <= 1 ? 'disabled' : '' ?>>
-                                                        <i class="fas fa-minus"></i>
-                                                    </button>
-                                                </form>
-                                                <span class="mx-2 fw-bold"><?= $item['quantity'] ?></span>
-                                                <form method="POST" class="d-inline">
-                                                    <input type="hidden" name="product_id" value="<?= $product_id ?>">
-                                                    <input type="hidden" name="quantity" value="<?= $item['quantity'] + 1 ?>">
-                                                    <button type="submit" name="update_cart" class="quantity-btn">
-                                                        <i class="fas fa-plus"></i>
-                                                    </button>
-                                                </form>
+                                <?php foreach ($products as $product): 
+                                    $stock_status = $product['stock_quantity'] <= 0 ? 'out' : 
+                                                   ($product['stock_quantity'] <= $product['min_stock'] ? 'low' : 'ok');
+                                    $stock_color = $stock_status == 'ok' ? 'high' : 
+                                                  ($stock_status == 'low' ? 'low' : 'medium');
+                                ?>
+                                    <div class="product-card" 
+                                         data-product-id="<?= $product['id'] ?>" 
+                                         data-category="<?= htmlspecialchars($product['category_name'] ?? 'Uncategorized') ?>"
+                                         data-name="<?= htmlspecialchars(strtolower($product['name'])) ?>"
+                                         data-sku="<?= htmlspecialchars(strtolower($product['sku'])) ?>">
+                                        
+                                        <div class="product-card-header">
+                                            <div class="product-icon">
+                                                <i class="fas fa-box"></i>
                                             </div>
-                                            <div class="fw-bold">KSH <?= number_format($item['selling_price'] * $item['quantity'], 2) ?></div>
-                                            <form method="POST" class="mt-1">
-                                                <input type="hidden" name="product_id" value="<?= $product_id ?>">
-                                                <button type="submit" name="remove_from_cart" class="btn btn-sm btn-outline-danger">
-                                                    <i class="fas fa-trash"></i>
+                                            <div>
+                                                <div class="product-name"><?= htmlspecialchars($product['name']) ?></div>
+                                                <div class="product-sku">SKU: <?= htmlspecialchars($product['sku']) ?></div>
+                                            </div>
+                                        </div>
+                                        
+                                        <?php if (!empty($product['description'])): ?>
+                                            <div class="product-description">
+                                                <?= htmlspecialchars(substr($product['description'], 0, 100)) ?>
+                                                <?= (strlen($product['description']) > 100) ? '...' : '' ?>
+                                            </div>
+                                        <?php endif; ?>
+                                        
+                                        <div class="product-price">KSH <?= number_format($product['selling_price'], 2) ?></div>
+                                        
+                                        <div class="stock-info">
+                                            <span class="stock-indicator-dot <?= $stock_color ?>"></span>
+                                            <span>Stock: <?= $product['stock_quantity'] ?></span>
+                                        </div>
+                                        
+                                        <div class="quantity-section">
+                                            <form method="POST" class="add-to-cart-form" onsubmit="return validateQuantity(this, <?= $product['stock_quantity'] ?>)">
+                                                <input type="hidden" name="product_id" value="<?= $product['id'] ?>">
+                                                
+                                                <div class="quantity-control-group">
+                                                    <div class="quantity-input-wrapper">
+                                                        <button type="button" class="quantity-btn quantity-decrease" onclick="decreaseQuantity(this)">
+                                                            <i class="fas fa-minus"></i>
+                                                        </button>
+                                                        <input type="number" name="quantity" value="1" min="1" 
+                                                               max="<?= $product['stock_quantity'] ?>" 
+                                                               class="form-control quantity-input"
+                                                               onchange="updateTotalPrice(this, <?= $product['selling_price'] ?>, '<?= $product['id'] ?>')">
+                                                        <button type="button" class="quantity-btn quantity-increase" onclick="increaseQuantity(this, <?= $product['stock_quantity'] ?>)">
+                                                            <i class="fas fa-plus"></i>
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                                
+                                                <div class="quantity-quick-buttons">
+                                                    <button type="button" class="quantity-quick-btn" onclick="setQuickQuantity(this, 1)">1</button>
+                                                    <button type="button" class="quantity-quick-btn" onclick="setQuickQuantity(this, 2)">2</button>
+                                                    <button type="button" class="quantity-quick-btn" onclick="setQuickQuantity(this, 5)">5</button>
+                                                    <button type="button" class="quantity-quick-btn" onclick="setQuickQuantity(this, 10)">10</button>
+                                                </div>
+                                                
+                                                <div class="product-total-price" id="total-price-<?= $product['id'] ?>">
+                                                    Total: KSH <?= number_format($product['selling_price'], 2) ?>
+                                                </div>
+                                                
+                                                <button type="submit" name="add_to_cart" class="btn btn-success btn-sm w-100">
+                                                    <i class="fas fa-cart-plus me-2"></i>Add to Cart
                                                 </button>
                                             </form>
                                         </div>
@@ -1105,114 +1051,151 @@ $display_cart_total = $cart_total;
                                 <?php endforeach; ?>
                             <?php endif; ?>
                         </div>
+                    </div>
 
-                        <div class="cart-summary">
-                            <!-- Company Info -->
-                            <div class="company-info mb-3">
-                                <h6 class="mb-2">
-                                    <i class="fas fa-store me-2"></i>
-                                    <?= $company_details['name'] ?>
-                                </h6>
-                                <div class="small">
-                                    <div><?= $company_details['address'] ?></div>
-                                    <div><?= $company_details['phone'] ?></div>
+                    <!-- Cart Sidebar -->
+                    <div class="cart-sidebar">
+                        <div class="cart-header">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <div>
+                                    <h4 class="mb-1">
+                                        <i class="fas fa-shopping-cart me-2"></i>
+                                        Shopping Cart
+                                    </h4>
+                                    <small><?= $cart_items ?> item<?= $cart_items != 1 ? 's' : '' ?> in cart</small>
                                 </div>
-                            </div>
-
-                            <!-- Customer Info (Optional) -->
-                            <div class="customer-info mb-3">
-                                <div class="d-flex justify-content-between align-items-center mb-2">
-                                    <h6 class="mb-0">Customer (Optional)</h6>
-                                    <button type="button" class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#customerModal">
-                                        <i class="fas fa-edit"></i>
-                                    </button>
-                                </div>
-                                <?php if ($_SESSION['pos_customer']): ?>
-                                    <div class="small">
-                                        <div><strong><?= htmlspecialchars($_SESSION['pos_customer']['name']) ?></strong></div>
-                                        <?php if ($_SESSION['pos_customer']['phone']): ?>
-                                            <div><?= htmlspecialchars($_SESSION['pos_customer']['phone']) ?></div>
-                                        <?php endif; ?>
-                                        <?php if ($_SESSION['pos_customer']['email']): ?>
-                                            <div><?= htmlspecialchars($_SESSION['pos_customer']['email']) ?></div>
-                                        <?php endif; ?>
+                                <?php if ($_SESSION['pos_customer'] && !empty($_SESSION['pos_customer']['name'])): ?>
+                                    <div class="text-end">
+                                        <small class="d-block">Customer:</small>
+                                        <strong><?= htmlspecialchars($_SESSION['pos_customer']['name']) ?></strong>
                                     </div>
-                                <?php else: ?>
-                                    <div class="text-muted small">Walk-in Customer</div>
                                 <?php endif; ?>
                             </div>
+                        </div>
 
-                            <!-- Payment Method -->
-                            <div class="mb-3">
-                                <h6 class="mb-2">Payment Method</h6>
-                                <div class="payment-methods">
-                                    <?php 
-                                    $payment_methods = [
-                                        'cash' => 'Cash',
-                                        'mpesa' => 'M-Pesa', 
-                                        'card' => 'Card',
-                                        'bank' => 'Bank Transfer'
-                                    ];
-                                    foreach ($payment_methods as $value => $label): ?>
+                        <!-- Cart Items -->
+                        <div class="cart-items-container">
+                            <?php if (empty($_SESSION['pos_cart'])): ?>
+                                <div class="empty-cart">
+                                    <i class="fas fa-shopping-cart"></i>
+                                    <p>Your cart is empty</p>
+                                    <p class="small">Add products from the first panel</p>
+                                </div>
+                            <?php else: ?>
+                                <?php foreach ($_SESSION['pos_cart'] as $product_id => $item): 
+                                    $item_total = $item['selling_price'] * $item['quantity'];
+                                ?>
+                                    <div class="cart-item">
+                                        <div class="cart-item-details">
+                                            <div class="cart-item-name"><?= htmlspecialchars($item['name']) ?></div>
+                                            <div class="cart-item-meta">
+                                                <span class="cart-item-price">
+                                                    KSH <?= number_format($item['selling_price'], 2) ?>
+                                                </span>
+                                                <?php if (!empty($item['sku'])): ?>
+                                                    <span class="cart-item-sku">SKU: <?= htmlspecialchars($item['sku']) ?></span>
+                                                <?php endif; ?>
+                                            </div>
+                                        </div>
+                                        
+                                        <div class="cart-item-quantity">
+                                            <form method="POST" class="d-inline">
+                                                <input type="hidden" name="product_id" value="<?= $product_id ?>">
+                                                <input type="hidden" name="quantity" value="<?= $item['quantity'] - 1 ?>">
+                                                <button type="submit" name="update_cart" class="quantity-btn" 
+                                                        <?= $item['quantity'] <= 1 ? 'disabled' : '' ?>>
+                                                    <i class="fas fa-minus"></i>
+                                                </button>
+                                            </form>
+                                            <span class="quantity-display"><?= $item['quantity'] ?></span>
+                                            <form method="POST" class="d-inline">
+                                                <input type="hidden" name="product_id" value="<?= $product_id ?>">
+                                                <input type="hidden" name="quantity" value="<?= $item['quantity'] + 1 ?>">
+                                                <button type="submit" name="update_cart" class="quantity-btn">
+                                                    <i class="fas fa-plus"></i>
+                                                </button>
+                                            </form>
+                                        </div>
+                                        
+                                        <div class="cart-item-total">
+                                            <div class="cart-total">KSH <?= number_format($item_total, 2) ?></div>
+                                        </div>
+                                        
                                         <form method="POST" class="d-inline">
-                                            <input type="hidden" name="payment_method" value="<?= $value ?>">
-                                            <button type="submit" name="update_payment_method" 
-                                                    class="payment-btn <?= $_SESSION['pos_payment_method'] === $value ? 'active' : '' ?>">
-                                                <?= $label ?>
+                                            <input type="hidden" name="product_id" value="<?= $product_id ?>">
+                                            <button type="submit" name="remove_from_cart" class="btn btn-link p-0 text-danger">
+                                                <i class="fas fa-times"></i>
                                             </button>
                                         </form>
-                                    <?php endforeach; ?>
-                                </div>
-                            </div>
+                                    </div>
+                                <?php endforeach; ?>
+                            <?php endif; ?>
+                        </div>
 
-                            <!-- Discount -->
-                            <div class="mb-3">
-                                <div class="d-flex justify-content-between align-items-center mb-2">
-                                    <h6 class="mb-0">Discount</h6>
-                                    <button type="button" class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#discountModal">
-                                        <i class="fas fa-edit"></i>
-                                    </button>
-                                </div>
-                                <div class="text-end">
-                                    KSH <?= number_format($display_discount, 2) ?>
-                                </div>
-                            </div>
+                        <!-- Payment Method -->
+                        <div class="payment-dropdown mb-3">
+                            <h6 class="mb-2">
+                                <i class="fas fa-money-bill-wave me-2"></i>Payment Method
+                            </h6>
+                            <form method="POST" id="paymentForm">
+                                <select name="payment_method" class="form-select" onchange="this.form.submit()">
+                                    <option value="cash" <?= $_SESSION['pos_payment_method'] === 'cash' ? 'selected' : '' ?>>
+                                        💵 Walk-in (Cash)
+                                    </option>
+                                    <option value="mpesa" <?= $_SESSION['pos_payment_method'] === 'mpesa' ? 'selected' : '' ?>>
+                                        📱 M-Pesa
+                                    </option>
+                                </select>
+                                <input type="hidden" name="update_payment_method" value="1">
+                            </form>
+                        </div>
 
-                            <!-- Order Summary -->
-                            <div class="mb-3">
-                                <div class="summary-row">
-                                    <span>Subtotal:</span>
-                                    <span>KSH <?= number_format($display_cart_total, 2) ?></span>
-                                </div>
-                                <div class="summary-row">
-                                    <span>Discount:</span>
-                                    <span>- KSH <?= number_format($display_discount, 2) ?></span>
-                                </div>
-                                <div class="summary-row">
-                                    <span>VAT (16%):</span>
-                                    <span>KSH <?= number_format($display_tax, 2) ?></span>
-                                </div>
-                                <div class="summary-row summary-total">
-                                    <span>Total:</span>
-                                    <span>KSH <?= number_format($display_net, 2) ?></span>
-                                </div>
-                            </div>
+                        <!-- Discount -->
+                        <div class="discount-section">
+                            <form method="POST" class="d-flex w-100 gap-2">
+                                <input type="number" name="discount" value="<?= $display_discount ?>" 
+                                       step="0.01" min="0" class="form-control discount-input" 
+                                       placeholder="Discount amount">
+                                <button type="submit" name="update_discount" class="btn btn-outline-primary">
+                                    <i class="fas fa-tag"></i> Apply
+                                </button>
+                            </form>
+                        </div>
 
-                            <!-- Action Buttons -->
-                            <div class="action-buttons">
-                                <form method="POST">
-                                    <button type="submit" name="clear_cart" class="btn btn-outline-danger w-100" 
-                                            <?= empty($_SESSION['pos_cart']) ? 'disabled' : '' ?>>
-                                        <i class="fas fa-trash me-2"></i>Clear Cart
-                                    </button>
-                                </form>
-                                <form method="POST">
-                                    <button type="submit" name="complete_sale" class="btn btn-success w-100" 
-                                            <?= empty($_SESSION['pos_cart']) || !$period_check['allowed'] ? 'disabled' : '' ?>>
-                                        <i class="fas fa-check me-2"></i>Complete Sale
-                                    </button>
-                                </form>
+                        <!-- Cart Summary -->
+                        <div class="cart-summary">
+                            <div class="summary-row">
+                                <span>Subtotal:</span>
+                                <span>KSH <?= number_format($cart_total, 2) ?></span>
                             </div>
+                            
+                            <?php if ($display_discount > 0): ?>
+                            <div class="summary-row text-danger">
+                                <span>Discount:</span>
+                                <span>- KSH <?= number_format($display_discount, 2) ?></span>
+                            </div>
+                            <?php endif; ?>
+                            
+                            <div class="summary-row summary-total">
+                                <span>TOTAL:</span>
+                                <span>KSH <?= number_format($display_net, 2) ?></span>
+                            </div>
+                        </div>
+
+                        <!-- Action Buttons -->
+                        <div class="action-buttons">
+                            <form method="POST">
+                                <button type="submit" name="clear_cart" class="btn btn-clear w-100" 
+                                        <?= empty($_SESSION['pos_cart']) ? 'disabled' : '' ?>>
+                                    <i class="fas fa-trash me-2"></i>Clear Cart
+                                </button>
+                            </form>
+                            <form method="POST">
+                                <button type="submit" name="complete_sale" class="btn btn-complete w-100" 
+                                        <?= empty($_SESSION['pos_cart']) || !$period_check['allowed'] ? 'disabled' : '' ?>>
+                                    <i class="fas fa-check me-2"></i>Complete Sale
+                                </button>
+                            </form>
                         </div>
                     </div>
                 </div>
@@ -1221,183 +1204,302 @@ $display_cart_total = $cart_total;
     </div>
 
     <!-- Customer Modal -->
-    <div class="modal fade" id="customerModal" tabindex="-1" aria-labelledby="customerModalLabel" aria-hidden="true">
+    <div class="modal fade" id="customerModal" tabindex="-1">
         <div class="modal-dialog">
             <div class="modal-content">
                 <div class="modal-header">
-                    <h5 class="modal-title" id="customerModalLabel">
-                        <i class="fas fa-user me-2"></i>Customer Information (Optional)
+                    <h5 class="modal-title">
+                        <i class="fas fa-user me-2"></i>Customer Information
                     </h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                 </div>
                 <form method="POST">
                     <div class="modal-body">
-                        <div class="alert alert-info">
-                            <i class="fas fa-info-circle me-2"></i>
-                            Customer information is optional. Receipts will use company details.
-                        </div>
                         <div class="mb-3">
-                            <label for="customer_name" class="form-label">Customer Name</label>
-                            <input type="text" class="form-control" id="customer_name" name="customer_name" 
+                            <label class="form-label">Customer Name</label>
+                            <input type="text" class="form-control" name="customer_name" 
                                    value="<?= $_SESSION['pos_customer']['name'] ?? '' ?>" 
                                    placeholder="Walk-in Customer">
                         </div>
                         <div class="mb-3">
-                            <label for="customer_phone" class="form-label">Phone Number</label>
-                            <input type="tel" class="form-control" id="customer_phone" name="customer_phone" 
+                            <label class="form-label">Phone Number</label>
+                            <input type="tel" class="form-control" name="customer_phone" 
                                    value="<?= $_SESSION['pos_customer']['phone'] ?? '' ?>" 
                                    placeholder="+254...">
                         </div>
                         <div class="mb-3">
-                            <label for="customer_email" class="form-label">Email Address</label>
-                            <input type="email" class="form-control" id="customer_email" name="customer_email" 
+                            <label class="form-label">Email Address</label>
+                            <input type="email" class="form-control" name="customer_email" 
                                    value="<?= $_SESSION['pos_customer']['email'] ?? '' ?>" 
                                    placeholder="customer@example.com">
                         </div>
                     </div>
                     <div class="modal-footer">
                         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                        <button type="submit" name="update_customer" class="btn btn-primary">Save Customer</button>
+                        <button type="submit" name="update_customer" class="btn btn-primary">Save</button>
                     </div>
                 </form>
             </div>
         </div>
     </div>
 
-    <!-- Discount Modal -->
-    <div class="modal fade" id="discountModal" tabindex="-1" aria-labelledby="discountModalLabel" aria-hidden="true">
-        <div class="modal-dialog">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title" id="discountModalLabel">
-                        <i class="fas fa-tag me-2"></i>Apply Discount
-                    </h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <form method="POST">
-                    <div class="modal-body">
-                        <div class="mb-3">
-                            <label for="discount" class="form-label">Discount Amount (KSH)</label>
-                            <input type="number" step="0.01" min="0" class="form-control" id="discount" name="discount" 
-                                   value="<?= $_SESSION['pos_discount'] ?>" 
-                                   placeholder="0.00">
-                            <div class="form-text">Enter the discount amount in Kenyan Shillings</div>
-                        </div>
-                    </div>
-                    <div class="modal-footer">
-                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                        <button type="submit" name="update_discount" class="btn btn-primary">Apply Discount</button>
-                    </div>
-                </form>
-            </div>
-        </div>
-    </div>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script><script>
+    // Quantity control functions
+    function decreaseQuantity(button) {
+        const input = button.closest('.quantity-input-wrapper').querySelector('.quantity-input');
+        const currentValue = parseInt(input.value) || 1;
+        if (currentValue > 1) {
+            input.value = currentValue - 1;
+            input.dispatchEvent(new Event('change'));
+        }
+    }
 
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
-    <script>
-        // Product search functionality
-        document.getElementById('productSearch').addEventListener('input', function(e) {
-            const searchTerm = e.target.value.toLowerCase();
+    function increaseQuantity(button, maxStock) {
+        const input = button.closest('.quantity-input-wrapper').querySelector('.quantity-input');
+        const currentValue = parseInt(input.value) || 1;
+        if (currentValue < maxStock) {
+            input.value = currentValue + 1;
+            input.dispatchEvent(new Event('change'));
+        } else {
+            alert(`Maximum stock available: ${maxStock}`);
+        }
+    }
+
+    function setQuickQuantity(button, quantity) {
+        const form = button.closest('.add-to-cart-form');
+        const input = form.querySelector('.quantity-input');
+        const maxStock = parseInt(input.getAttribute('max')) || 999;
+        
+        if (quantity <= maxStock) {
+            input.value = quantity;
+            input.dispatchEvent(new Event('change'));
+        } else {
+            input.value = maxStock;
+            input.dispatchEvent(new Event('change'));
+            alert(`Maximum stock available: ${maxStock}`);
+        }
+    }
+
+    function updateTotalPrice(input, unitPrice, productId) {
+        const quantity = parseInt(input.value) || 1;
+        const total = quantity * unitPrice;
+        const totalElement = document.getElementById(`total-price-${productId}`);
+        if (totalElement) {
+            totalElement.textContent = `Total: KSH ${total.toFixed(2)}`;
+        }
+    }
+
+    function validateQuantity(form, maxStock) {
+        const input = form.querySelector('.quantity-input');
+        const quantity = parseInt(input.value) || 0;
+        
+        if (quantity <= 0) {
+            alert('Quantity must be greater than 0');
+            input.focus();
+            return false;
+        }
+        
+        if (quantity > maxStock) {
+            alert(`Only ${maxStock} units available in stock`);
+            input.value = maxStock;
+            const productId = form.querySelector('input[name="product_id"]').value;
+            const card = form.closest('.product-card');
+            const priceElement = card ? card.querySelector('.product-price') : null;
+            const priceText = priceElement ? priceElement.textContent : '';
+            const unitPrice = parseFloat(priceText.replace('KSH', '').replace(',', '').trim());
+            updateTotalPrice(input, unitPrice, productId);
+            return false;
+        }
+        
+        return true;
+    }
+
+    // Initialize total prices on page load
+    document.addEventListener('DOMContentLoaded', function() {
+        document.querySelectorAll('.add-to-cart-form').forEach(form => {
+            const input = form.querySelector('.quantity-input');
+            
+            // Find the parent product card
+            const card = form.closest('.product-card');
+            
+            // Look for price in the card
+            const priceElement = card ? card.querySelector('.product-price') : null;
+            const priceText = priceElement ? priceElement.textContent : '';
+            const unitPrice = parseFloat(priceText.replace('KSH', '').replace(',', '').trim());
+            const productId = form.querySelector('input[name="product_id"]').value;
+            
+            if (input && !isNaN(unitPrice)) {
+                updateTotalPrice(input, unitPrice, productId);
+            }
+        });
+        
+        // Ensure all buttons are visible on load
+        ensureButtonsVisible();
+    });
+
+    // Function to ensure all add-to-cart buttons are visible
+    function ensureButtonsVisible() {
+        const buttons = document.querySelectorAll('.add-to-cart-form button[type="submit"]');
+        buttons.forEach(button => {
+            button.style.display = 'flex';
+            button.style.visibility = 'visible';
+            button.style.opacity = '1';
+        });
+    }
+
+    // Product search with button visibility check
+    document.getElementById('productSearch').addEventListener('input', function(e) {
+        const searchTerm = e.target.value.toLowerCase();
+        const productCards = document.querySelectorAll('.product-card');
+        
+        productCards.forEach(card => {
+            const name = card.getAttribute('data-name');
+            const sku = card.getAttribute('data-sku');
+            
+            if (name.includes(searchTerm) || sku.includes(searchTerm)) {
+                card.style.display = 'block';
+            } else {
+                card.style.display = 'none';
+            }
+        });
+        
+        // Ensure buttons remain visible after search
+        setTimeout(ensureButtonsVisible, 100);
+    });
+
+    // Category filter with button visibility check
+    document.querySelectorAll('.category-btn').forEach(btn => {
+        btn.addEventListener('click', function() {
+            document.querySelectorAll('.category-btn').forEach(b => b.classList.remove('active'));
+            this.classList.add('active');
+            
+            const selectedCategory = this.getAttribute('data-category');
             const productCards = document.querySelectorAll('.product-card');
             
             productCards.forEach(card => {
-                const name = card.getAttribute('data-name');
-                const sku = card.getAttribute('data-sku');
+                const category = card.getAttribute('data-category');
                 
-                if (name.includes(searchTerm) || sku.includes(searchTerm)) {
+                if (selectedCategory === 'all' || category === selectedCategory) {
                     card.style.display = 'block';
                 } else {
                     card.style.display = 'none';
                 }
             });
+            
+            // Ensure buttons remain visible after filtering
+            setTimeout(ensureButtonsVisible, 100);
         });
+    });
 
-        // Category filter functionality
-        document.querySelectorAll('.category-btn').forEach(btn => {
-            btn.addEventListener('click', function() {
-                // Update active button
-                document.querySelectorAll('.category-btn').forEach(b => b.classList.remove('active'));
-                this.classList.add('active');
-                
-                const selectedCategory = this.getAttribute('data-category');
-                const productCards = document.querySelectorAll('.product-card');
-                
-                productCards.forEach(card => {
-                    const category = card.getAttribute('data-category');
-                    
-                    if (selectedCategory === 'all' || category === selectedCategory) {
-                        card.style.display = 'block';
-                    } else {
-                        card.style.display = 'none';
-                    }
-                });
-            });
-        });
+    // Receipt modal functions
+    function closeReceiptModal() {
+        const modal = document.getElementById('receiptModal');
+        if (modal) {
+            modal.style.display = 'none';
+        }
+        
+        // Submit cancel form
+        const cancelBtn = document.querySelector('[name="cancel_sale"]');
+        if (cancelBtn) {
+            cancelBtn.closest('form').submit();
+        }
+    }
 
-        // Auto-focus on quantity input when product is clicked
-        document.querySelectorAll('.product-card').forEach(card => {
-            card.addEventListener('click', function(e) {
-                if (!e.target.closest('.add-to-cart-form')) {
-                    const input = this.querySelector('input[type="number"]');
-                    if (input) {
-                        input.focus();
-                        input.select();
-                    }
+    function printReceiptPreview(receiptNumber) {
+        const printWindow = window.open('pos.php?print_receipt=1&receipt_number=' + encodeURIComponent(receiptNumber), '_blank');
+        if (printWindow) {
+            printWindow.focus();
+        }
+    }
+
+    // Print receipt after successful sale
+    <?php if ($receipt_id > 0 && isset($_SESSION['last_receipt_data'])): ?>
+    setTimeout(() => {
+        printReceiptPreview('<?= $_SESSION['last_receipt_data']['receipt_number'] ?>');
+    }, 500);
+    <?php endif; ?>
+
+    // Keyboard shortcuts
+    document.addEventListener('keydown', function(e) {
+        // Ctrl + P to print receipt when modal is open
+        if (e.ctrlKey && e.key === 'p' && document.getElementById('receiptModal')) {
+            e.preventDefault();
+            const modal = document.getElementById('receiptModal');
+            if (modal && modal.style.display === 'block') {
+                const receiptNumber = modal.getAttribute('data-receipt-number');
+                if (receiptNumber) {
+                    printReceiptPreview(receiptNumber);
                 }
-            });
-        });
+            }
+        }
+        
+        // Ctrl + S to save/confirm
+        if (e.ctrlKey && e.key === 's' && document.getElementById('receiptModal')) {
+            e.preventDefault();
+            const confirmBtn = document.querySelector('[name="confirm_sale"]');
+            if (confirmBtn) {
+                confirmBtn.click();
+            }
+        }
+        
+        // Ctrl + C to cancel (when modal is open)
+        if (e.ctrlKey && e.key === 'c' && document.getElementById('receiptModal')) {
+            e.preventDefault();
+            const cancelBtn = document.querySelector('[name="cancel_sale"]');
+            if (cancelBtn) {
+                cancelBtn.click();
+            }
+        }
+        
+        // Ctrl + F to focus search
+        if (e.ctrlKey && e.key === 'f') {
+            e.preventDefault();
+            const searchInput = document.getElementById('productSearch');
+            if (searchInput) {
+                searchInput.focus();
+            }
+        }
+        
+        // Ctrl + D to focus discount
+        if (e.ctrlKey && e.key === 'd') {
+            e.preventDefault();
+            const discountInput = document.querySelector('.discount-input');
+            if (discountInput) {
+                discountInput.focus();
+            }
+        }
+    });
 
-        // Quick quantity shortcuts
-        document.addEventListener('keydown', function(e) {
-            if (e.ctrlKey) {
-                const focusedInput = document.activeElement;
-                if (focusedInput && focusedInput.type === 'number' && focusedInput.closest('.product-card')) {
-                    switch(e.key) {
-                        case '1':
-                            focusedInput.value = 1;
-                            break;
-                        case '2':
-                            focusedInput.value = 2;
-                            break;
-                        case '5':
-                            focusedInput.value = 5;
-                            break;
-                        case '0':
-                            focusedInput.value = 10;
-                            break;
-                    }
+    // Auto-hide success messages
+    <?php if ($message && !isset($show_receipt_preview)): ?>
+    setTimeout(() => {
+        const alert = document.querySelector('.alert-success');
+        if (alert) {
+            alert.style.opacity = '0';
+            setTimeout(() => alert.remove(), 300);
+        }
+    }, 5000);
+    <?php endif; ?>
+
+    // Auto-focus quantity input when clicking product card
+    document.querySelectorAll('.product-card').forEach(card => {
+        card.addEventListener('click', function(e) {
+            // Don't trigger if clicking on interactive elements
+            if (!e.target.closest('.add-to-cart-form') && 
+                !e.target.closest('.quantity-btn') && 
+                !e.target.closest('.quantity-quick-btn') &&
+                !e.target.closest('button')) {
+                const input = this.querySelector('.quantity-input');
+                if (input) {
+                    input.focus();
+                    input.select();
                 }
             }
         });
+    });
 
-        // Auto-submit forms on quantity change for better UX
-        document.querySelectorAll('input[name="quantity"]').forEach(input => {
-            input.addEventListener('change', function() {
-                this.closest('form').submit();
-            });
-        });
-
-        // Print receipt functionality
-        function printReceipt() {
-            const receiptContent = document.getElementById('receiptContent').innerHTML;
-            const originalContent = document.body.innerHTML;
-            
-            document.body.innerHTML = receiptContent;
-            window.print();
-            document.body.innerHTML = originalContent;
-            window.location.reload(); // Reload to restore functionality
-        }
-
-        // Show success message for a limited time
-        <?php if ($message && !$receipt_number): ?>
-            setTimeout(() => {
-                const alert = document.querySelector('.alert-success');
-                if (alert) {
-                    alert.style.opacity = '0';
-                    setTimeout(() => alert.remove(), 300);
-                }
-            }, 5000);
-        <?php endif; ?>
-    </script>
+    // Periodically check button visibility (failsafe)
+    setInterval(ensureButtonsVisible, 2000);
+</script>
 </body>
 </html>

@@ -2129,3 +2129,585 @@ body {
 body.modal-open {
     overflow: hidden;
 }
+/* ===== 5-YEAR DASHBOARD SPECIFIC STYLES ===== */
+
+/* Dashboard Layout */
+.five-year-container {
+    background: var(--light-bg);
+    min-height: 100vh;
+    padding: var(--spacing-xl);
+}
+
+/* Dashboard Header */
+.dashboard-header-container {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: var(--spacing-xl);
+    flex-wrap: wrap;
+    gap: var(--spacing-md);
+}
+
+.dashboard-title-section {
+    flex: 1;
+    min-width: 300px;
+}
+
+.dashboard-title-section h1 {
+    font-size: 2.25rem;
+    font-weight: var(--font-weight-bold);
+    color: var(--primary-color);
+    margin-bottom: var(--spacing-xs);
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-md);
+}
+
+.dashboard-title-section h1 i {
+    color: var(--secondary-color);
+}
+
+.dashboard-subtitle {
+    color: var(--muted-text);
+    font-size: 1.1rem;
+    margin-bottom: var(--spacing-md);
+}
+
+/* Year Selector */
+.year-selector-container {
+    background: var(--white);
+    border-radius: var(--border-radius-lg);
+    padding: var(--spacing-lg);
+    box-shadow: var(--shadow-sm);
+    margin-bottom: var(--spacing-xl);
+}
+
+.year-tabs {
+    display: flex;
+    gap: var(--spacing-sm);
+    overflow-x: auto;
+    padding-bottom: var(--spacing-sm);
+    margin-bottom: var(--spacing-md);
+}
+
+.year-tab {
+    padding: var(--spacing-sm) var(--spacing-lg);
+    background: var(--light-bg);
+    border: 1px solid var(--light-border);
+    border-radius: var(--border-radius-md);
+    color: var(--muted-text);
+    font-weight: var(--font-weight-medium);
+    cursor: pointer;
+    transition: var(--transition-fast);
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+.year-tab:hover {
+    background: var(--secondary-color);
+    color: var(--white);
+    border-color: var(--secondary-color);
+}
+
+.year-tab.active {
+    background: var(--secondary-color);
+    color: var(--white);
+    border-color: var(--secondary-color);
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-sm);
+}
+
+.year-range-display {
+    text-align: center;
+    font-size: 1.1rem;
+    font-weight: var(--font-weight-semibold);
+    color: var(--primary-color);
+    padding: var(--spacing-md);
+    background: rgba(52, 152, 219, 0.1);
+    border-radius: var(--border-radius-md);
+}
+
+/* Summary Stats */
+.summary-stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: var(--spacing-lg);
+    margin-bottom: var(--spacing-xl);
+}
+
+.summary-stat-card {
+    background: var(--white);
+    border-radius: var(--border-radius-lg);
+    padding: var(--spacing-lg);
+    box-shadow: var(--shadow-sm);
+    border-top: 4px solid;
+    transition: var(--transition-normal);
+}
+
+.summary-stat-card:hover {
+    transform: translateY(-3px);
+    box-shadow: var(--shadow-md);
+}
+
+.summary-stat-card.total-revenue {
+    border-top-color: var(--success-color);
+}
+
+.summary-stat-card.total-expenses {
+    border-top-color: var(--danger-color);
+}
+
+.summary-stat-card.total-profit {
+    border-top-color: var(--info-color);
+}
+
+.summary-stat-card.average-monthly {
+    border-top-color: var(--warning-color);
+}
+
+.summary-stat-label {
+    font-size: 0.9rem;
+    font-weight: var(--font-weight-medium);
+    color: var(--muted-text);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: var(--spacing-xs);
+}
+
+.summary-stat-value {
+    font-size: 2.25rem;
+    font-weight: var(--font-weight-bold);
+    color: var(--dark-text);
+    line-height: 1.1;
+    margin-bottom: var(--spacing-sm);
+}
+
+.summary-stat-period {
+    font-size: 0.85rem;
+    color: var(--muted-text);
+    font-weight: var(--font-weight-normal);
+}
+
+/* Charts Section */
+.charts-section {
+    margin-bottom: var(--spacing-xl);
+}
+
+.charts-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(600px, 1fr));
+    gap: var(--spacing-lg);
+    margin-bottom: var(--spacing-lg);
+}
+
+.chart-card {
+    background: var(--white);
+    border-radius: var(--border-radius-lg);
+    padding: var(--spacing-lg);
+    box-shadow: var(--shadow-sm);
+    transition: var(--transition-normal);
+}
+
+.chart-card:hover {
+    box-shadow: var(--shadow-md);
+}
+
+.chart-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: var(--spacing-lg);
+    padding-bottom: var(--spacing-md);
+    border-bottom: 1px solid var(--light-border);
+}
+
+.chart-header h3 {
+    font-size: 1.25rem;
+    font-weight: var(--font-weight-semibold);
+    color: var(--dark-text);
+    margin: 0;
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+}
+
+.chart-container {
+    position: relative;
+    height: 300px;
+    width: 100%;
+}
+
+/* Year Comparison */
+.year-comparison-section {
+    margin-bottom: var(--spacing-xl);
+}
+
+.year-comparison-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+    gap: var(--spacing-lg);
+}
+
+.year-comparison-card {
+    background: var(--white);
+    border-radius: var(--border-radius-lg);
+    padding: var(--spacing-lg);
+    box-shadow: var(--shadow-sm);
+}
+
+.year-comparison-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: var(--spacing-lg);
+    padding-bottom: var(--spacing-md);
+    border-bottom: 1px solid var(--light-border);
+}
+
+.year-comparison-header h4 {
+    font-size: 1.1rem;
+    font-weight: var(--font-weight-semibold);
+    color: var(--dark-text);
+    margin: 0;
+}
+
+.year-stats {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: var(--spacing-md);
+}
+
+.year-stat-item {
+    text-align: center;
+}
+
+.year-stat-value {
+    font-size: 1.5rem;
+    font-weight: var(--font-weight-bold);
+    color: var(--dark-text);
+    margin-bottom: var(--spacing-xs);
+}
+
+.year-stat-label {
+    font-size: 0.85rem;
+    color: var(--muted-text);
+    font-weight: var(--font-weight-medium);
+}
+
+/* Monthly Breakdown */
+.monthly-breakdown-section {
+    margin-bottom: var(--spacing-xl);
+}
+
+.monthly-breakdown-grid {
+    display: grid;
+    grid-template-columns: repeat(12, 1fr);
+    gap: var(--spacing-sm);
+    margin-top: var(--spacing-lg);
+}
+
+.month-block {
+    background: var(--white);
+    border-radius: var(--border-radius-md);
+    padding: var(--spacing-md);
+    text-align: center;
+    box-shadow: var(--shadow-sm);
+    transition: var(--transition-fast);
+    border: 1px solid transparent;
+}
+
+.month-block:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-md);
+    border-color: var(--secondary-color);
+}
+
+.month-name {
+    font-size: 0.85rem;
+    font-weight: var(--font-weight-semibold);
+    color: var(--primary-color);
+    margin-bottom: var(--spacing-xs);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.month-income {
+    font-size: 1.1rem;
+    font-weight: var(--font-weight-bold);
+    color: var(--dark-text);
+    margin-bottom: var(--spacing-xs);
+}
+
+.month-profit {
+    font-size: 0.85rem;
+    font-weight: var(--font-weight-medium);
+}
+
+.profit-positive {
+    color: var(--success-color);
+}
+
+.profit-negative {
+    color: var(--danger-color);
+}
+
+.profit-neutral {
+    color: var(--muted-text);
+}
+
+/* Top Performers Section */
+.top-performers-section {
+    margin-bottom: var(--spacing-xl);
+}
+
+.top-performers-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(500px, 1fr));
+    gap: var(--spacing-lg);
+}
+
+.top-products-card,
+.top-categories-card {
+    background: var(--white);
+    border-radius: var(--border-radius-lg);
+    padding: var(--spacing-lg);
+    box-shadow: var(--shadow-sm);
+}
+
+.top-products-card .card-header,
+.top-categories-card .card-header {
+    background: var(--white);
+    border-bottom: 1px solid var(--light-border);
+    padding-bottom: var(--spacing-md);
+    margin-bottom: var(--spacing-lg);
+}
+
+.top-products-card .card-title,
+.top-categories-card .card-title {
+    font-size: 1.25rem;
+    font-weight: var(--font-weight-semibold);
+    color: var(--dark-text);
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+}
+
+.performance-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.performance-table th {
+    background: var(--light-bg);
+    padding: var(--spacing-md);
+    text-align: left;
+    font-weight: var(--font-weight-semibold);
+    color: var(--dark-text);
+    border-bottom: 2px solid var(--light-border);
+    font-size: 0.85rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.performance-table td {
+    padding: var(--spacing-md);
+    border-bottom: 1px solid var(--light-border);
+    vertical-align: middle;
+}
+
+.performance-table tbody tr:hover {
+    background: rgba(52, 152, 219, 0.05);
+}
+
+.performance-table .rank {
+    width: 50px;
+    text-align: center;
+}
+
+.rank-badge {
+    display: inline-block;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: var(--light-bg);
+    color: var(--dark-text);
+    font-weight: var(--font-weight-bold);
+    text-align: center;
+    line-height: 28px;
+    font-size: 0.85rem;
+}
+
+.rank-1 .rank-badge {
+    background: #FFD700;
+    color: #333;
+}
+
+.rank-2 .rank-badge {
+    background: #C0C0C0;
+    color: #333;
+}
+
+.rank-3 .rank-badge {
+    background: #CD7F32;
+    color: #fff;
+}
+
+/* Trend Indicators */
+.trend-indicator {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--spacing-xs);
+    font-size: 0.85rem;
+    font-weight: var(--font-weight-semibold);
+    padding: 2px 8px;
+    border-radius: 12px;
+}
+
+.trend-up {
+    background: rgba(39, 174, 96, 0.1);
+    color: var(--success-color);
+}
+
+.trend-down {
+    background: rgba(231, 76, 60, 0.1);
+    color: var(--danger-color);
+}
+
+.trend-neutral {
+    background: rgba(149, 165, 166, 0.1);
+    color: var(--muted-text);
+}
+
+/* Legend */
+.chart-legend {
+    display: flex;
+    justify-content: center;
+    gap: var(--spacing-lg);
+    margin-top: var(--spacing-md);
+    flex-wrap: wrap;
+}
+
+.legend-item {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-xs);
+    font-size: 0.85rem;
+    color: var(--muted-text);
+}
+
+.legend-color {
+    width: 12px;
+    height: 12px;
+    border-radius: 2px;
+}
+
+/* Responsive Adjustments */
+@media (max-width: 1200px) {
+    .charts-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .monthly-breakdown-grid {
+        grid-template-columns: repeat(6, 1fr);
+    }
+    
+    .top-performers-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (max-width: 992px) {
+    .dashboard-header-container {
+        flex-direction: column;
+    }
+    
+    .year-tabs {
+        flex-wrap: wrap;
+    }
+    
+    .monthly-breakdown-grid {
+        grid-template-columns: repeat(4, 1fr);
+    }
+    
+    .summary-stats-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+
+@media (max-width: 768px) {
+    .five-year-container {
+        padding: var(--spacing-md);
+    }
+    
+    .summary-stats-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .monthly-breakdown-grid {
+        grid-template-columns: repeat(3, 1fr);
+    }
+    
+    .year-comparison-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .charts-section {
+        overflow-x: auto;
+    }
+    
+    .chart-card {
+        min-width: 500px;
+    }
+}
+
+@media (max-width: 576px) {
+    .monthly-breakdown-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+    
+    .year-tab {
+        padding: var(--spacing-sm) var(--spacing-md);
+        font-size: 0.85rem;
+    }
+    
+    .summary-stat-value {
+        font-size: 1.75rem;
+    }
+    
+    .chart-container {
+        height: 250px;
+    }
+    
+    .performance-table {
+        font-size: 0.85rem;
+    }
+    
+    .performance-table th,
+    .performance-table td {
+        padding: var(--spacing-sm);
+    }
+}
+
+/* Print Styles */
+@media print {
+    .year-tabs,
+    .export-controls {
+        display: none !important;
+    }
+    
+    .five-year-container {
+        padding: 0;
+    }
+    
+    .chart-card {
+        break-inside: avoid;
+        box-shadow: none !important;
+        border: 1px solid #000 !important;
+    }
+    
+    .summary-stat-card {
+        break-inside: avoid;
+        box-shadow: none !important;
+        border: 1px solid #000 !important;
+    }
+}

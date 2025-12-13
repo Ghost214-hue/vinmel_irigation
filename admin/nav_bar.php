@@ -57,23 +57,12 @@
                 <i class="fas fa-chart-area"></i>
                 5-Year Overview
             </a>
-            <a href="custom.php" class="nav-link">
-                <i class="fas fa-calendar-alt"></i>
-                Custom Period
-            </a>
-            <a href="comparison.php" class="nav-link">
-                <i class="fas fa-balance-scale"></i>
-                Comparison
-            </a>
         </div>
 
         <!-- Business Setup -->
         <div class="nav-section">
             <div class="nav-section-title">Business Setup</div>
-            <a href="setup.php" class="nav-link">
-                <i class="fas fa-cog"></i>
-                Business Setup
-            </a>
+          
             <a href="products.php" class="nav-link">
                 <i class="fas fa-boxes"></i>
                 Products & Inventory
