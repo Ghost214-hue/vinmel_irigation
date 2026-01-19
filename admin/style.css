@@ -2711,3 +2711,156 @@ body.modal-open {
         border: 1px solid #000 !important;
     }
 }
+/* ===== INVENTORY PAGE SPECIFIC STYLES ===== */
+
+/* Period Info Card */
+.period-info-card {
+  background: linear-gradient(135deg, var(--primary-light), var(--secondary-color));
+  color: var(--white);
+  border-radius: var(--border-radius-xl);
+  padding: var(--spacing-lg) var(--spacing-xl);
+  margin-bottom: var(--spacing-xl);
+}
+
+/* Balance Flow Visualization */
+.balance-flow {
+  background: linear-gradient(135deg, var(--primary-light), var(--secondary-color));
+  color: var(--white);
+  border-radius: var(--border-radius-md);
+  padding: var(--spacing-md);
+  margin: var(--spacing-md) 0;
+}
+
+.balance-step {
+  text-align: center;
+  padding: var(--spacing-sm);
+}
+
+.balance-arrow {
+  font-size: 1.5rem;
+  color: var(--white);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+}
+
+/* KPI Cards */
+.kpi-card {
+  border: none;
+  border-radius: var(--border-radius-lg);
+  box-shadow: var(--shadow-md);
+  transition: transform 0.2s ease;
+  height: 100%;
+}
+.kpi-card:hover {
+  transform: translateY(-5px);
+}
+
+.kpi-value {
+  font-size: 1.8rem;
+  font-weight: var(--font-weight-bold);
+  margin-bottom: var(--spacing-sm);
+}
+
+.kpi-label {
+  font-size: 0.9rem;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  opacity: 0.8;
+}
+
+/* Balance Section */
+.balance-section {
+  background: var(--light-bg);
+  border-radius: var(--border-radius-md);
+  padding: var(--spacing-lg);
+  margin-bottom: var(--spacing-lg);
+}
+
+/* Carried Forward Card */
+.carry-forward-card {
+  border-left: 4px solid var(--info-color);
+}
+
+/* Balance Change Indicators */
+.balance-change-positive {
+  color: var(--success-color);
+  font-weight: var(--font-weight-bold);
+}
+.balance-change-negative {
+  color: var(--danger-color);
+  font-weight: var(--font-weight-bold);
+}
+
+/* Period Navigation */
+.period-navigation {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--spacing-md);
+}
+
+.period-selector {
+  min-width: 250px;
+}
+
+.period-nav-btn {
+  padding: 8px 16px;
+  border-radius: var(--border-radius-sm);
+  text-decoration: none;
+  transition: all 0.3s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  background: var(--light-bg);
+  color: var(--dark-text);
+  border: 1px solid var(--light-border);
+}
+.period-nav-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+  background: var(--secondary-color);
+  color: var(--white);
+}
+
+/* Product Icon */
+.product-icon {
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--border-radius-round);
+  background: var(--primary-color);
+  color: var(--white);
+}
+
+/* Stock Status Colors */
+.stock-status-high { color: var(--success-color); }
+.stock-status-medium { color: var(--warning-color); }
+.stock-status-low { color: var(--accent-color); }
+.stock-status-out { color: var(--danger-color); }
+.stock-status-unknown { color: var(--muted-text); }
+
+/* Progress Bar Override */
+.progress {
+  height: 6px;
+}
+
+/* Badges */
+.badge-super-admin {
+  background: var(--warning-light);
+  color: var(--black);
+}
+.added-by-badge {
+  background: var(--muted-text);
+  color: var(--white);
+  font-size: 0.75rem;
+  padding: 2px 6px;
+  border-radius: 3px;
+}
+.admin-view-badge {
+  background: var(--info-color);
+  color: var(--white);
+}

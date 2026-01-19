@@ -186,12 +186,25 @@ function validateFileUpload($file, $allowedTypes = ['image/jpeg', 'image/png', '
     return $errors;
 }
 
-// Session Security
+// Session Security - FIXED VERSION
 function secureSession() {
-    ini_set('session.cookie_httponly', 1);
-    ini_set('session.cookie_secure', 1); // Enable if using HTTPS
-    ini_set('session.cookie_samesite', 'Strict');
+    // Check if session is already active
+    $sessionStatus = session_status();
     
+    if ($sessionStatus === PHP_SESSION_NONE) {
+        // No session exists, we can set ini settings
+        ini_set('session.cookie_httponly', 1);
+        ini_set('session.cookie_secure', 1); // Enable if using HTTPS
+        ini_set('session.cookie_samesite', 'Strict');
+        
+        // Start the session
+        session_start();
+    } elseif ($sessionStatus === PHP_SESSION_ACTIVE) {
+        // Session is already active, we can only regenerate ID
+        // Note: We cannot change ini settings when session is active
+    }
+    
+    // Regenerate session ID to prevent session fixation
     session_regenerate_id(true);
 }
 
@@ -257,5 +270,23 @@ function validateFloat($value, $min = null, $max = null) {
     }
     
     return true;
+}
+
+// Initialize secure session if not already started
+function initSecureSession() {
+    if (session_status() === PHP_SESSION_NONE) {
+        // Set session settings before starting
+        ini_set('session.cookie_httponly', 1);
+        ini_set('session.cookie_secure', 1); // Enable if using HTTPS
+        ini_set('session.cookie_samesite', 'Strict');
+        
+        session_start();
+        
+        // Regenerate session ID to prevent session fixation
+        if (empty($_SESSION['initiated'])) {
+            session_regenerate_id(true);
+            $_SESSION['initiated'] = true;
+        }
+    }
 }
 ?>

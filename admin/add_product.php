@@ -4,6 +4,16 @@ ini_set('display_startup_errors', 1);
 error_reporting(E_ALL);
 
 require_once 'config.php';
+require_once 'security.php'; // Include security functions
+
+// Set security headers
+setSecurityHeaders();
+
+// Initialize secure session
+initSecureSession();
+
+// Generate CSRF token for forms
+$csrf_token = generateCSRFToken();
 
 // Check if user is logged in and is admin
 checkAuth();
@@ -19,6 +29,13 @@ $edit_product = null;
 $category_message = '';
 $category_error = '';
 $selected_period_id = isset($_GET['period_id']) ? intval($_GET['period_id']) : null;
+
+// Rate limiting check for form submissions
+$rateLimitKey = "product_form_" . $user_id;
+if (!checkRateLimit($rateLimitKey, 10, 60)) {
+    $error = "Too many requests. Please wait a moment before trying again.";
+    securityLog("Rate limit exceeded for product form submissions", "WARNING", $user_id);
+}
 
 /**
  * Check if current user can modify data based on period status
@@ -226,34 +243,50 @@ function fetchCategories($db) {
 
 // Handle category creation
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_category'])) {
-    $category_name = trim($_POST['category_name']);
-    $category_type = trim($_POST['category_type']);
-    $parent_id = !empty($_POST['parent_id']) ? intval($_POST['parent_id']) : NULL;
-
-    if (empty($category_name)) {
-        $category_error = "Category name is required!";
+    // Validate CSRF token
+    if (!isset($_POST['csrf_token']) || !validateCSRFToken($_POST['csrf_token'])) {
+        $category_error = "Security token validation failed. Please try again.";
+        securityLog("CSRF token validation failed for category creation", "SECURITY", $user_id);
     } else {
-        // Check if category already exists
-        $check_sql = "SELECT id FROM categories WHERE name = ?";
-        $check_stmt = $db->prepare($check_sql);
-        $check_stmt->bind_param("s", $category_name);
-        $check_stmt->execute();
+        $category_name = sanitizeInput(trim($_POST['category_name']), 'string');
+        $category_type = sanitizeInput(trim($_POST['category_type']), 'string');
+        $parent_id = !empty($_POST['parent_id']) ? intval($_POST['parent_id']) : NULL;
+
+        // Input validation rules
+        $validationRules = [
+            'category_name' => 'required|min:2|max:100',
+            'category_type' => 'max:10'
+        ];
         
-        if ($check_stmt->get_result()->num_rows > 0) {
-            $category_error = "Category '$category_name' already exists!";
+        $validationErrors = validateInput($_POST, $validationRules);
+        
+        if (!empty($validationErrors)) {
+            $category_error = implode('<br>', $validationErrors);
         } else {
-            // Insert new category
-            $insert_sql = "INSERT INTO categories (name, type, parent_id, created_at) VALUES (?, ?, ?, NOW())";
-            $insert_stmt = $db->prepare($insert_sql);
+            // Check if category already exists
+            $check_sql = "SELECT id FROM categories WHERE name = ?";
+            $check_stmt = $db->prepare($check_sql);
+            $check_stmt->bind_param("s", $category_name);
+            $check_stmt->execute();
             
-            $safe_type = substr($category_type, 0, 10);
-            $insert_stmt->bind_param("ssi", $category_name, $safe_type, $parent_id);
-            
-            if ($insert_stmt->execute()) {
-                $category_message = "Category '$category_name' added successfully!";
-                $_POST['category_name'] = '';
+            if ($check_stmt->get_result()->num_rows > 0) {
+                $category_error = "Category '$category_name' already exists!";
             } else {
-                $category_error = "Failed to add category: " . $db->error;
+                // Insert new category
+                $insert_sql = "INSERT INTO categories (name, type, parent_id, created_at) VALUES (?, ?, ?, NOW())";
+                $insert_stmt = $db->prepare($insert_sql);
+                
+                $safe_type = substr($category_type, 0, 10);
+                $insert_stmt->bind_param("ssi", $category_name, $safe_type, $parent_id);
+                
+                if ($insert_stmt->execute()) {
+                    $category_message = "Category '$category_name' added successfully!";
+                    $_POST = array(); // Clear all POST data to prevent resubmission
+                    securityLog("Category created: $category_name", "INFO", $user_id);
+                } else {
+                    $category_error = "Failed to add category: " . $db->error;
+                    securityLog("Failed to create category: " . $db->error, "ERROR", $user_id);
+                }
             }
         }
     }
@@ -261,27 +294,40 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_category'])) {
 
 // Handle category deletion
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['delete_category'])) {
-    $category_id = intval($_POST['category_id']);
-    
-    // Check if category is used by any products
-    $check_sql = "SELECT COUNT(*) as product_count FROM products WHERE category_id = ?";
-    $check_stmt = $db->prepare($check_sql);
-    $check_stmt->bind_param("i", $category_id);
-    $check_stmt->execute();
-    $result = $check_stmt->get_result();
-    $product_count = $result->fetch_assoc()['product_count'];
-    
-    if ($product_count > 0) {
-        $category_error = "Cannot delete category: It is used by $product_count product(s).";
+    // Validate CSRF token
+    if (!isset($_POST['csrf_token']) || !validateCSRFToken($_POST['csrf_token'])) {
+        $category_error = "Security token validation failed. Please try again.";
+        securityLog("CSRF token validation failed for category deletion", "SECURITY", $user_id);
     } else {
-        $delete_sql = "DELETE FROM categories WHERE id = ?";
-        $delete_stmt = $db->prepare($delete_sql);
-        $delete_stmt->bind_param("i", $category_id);
+        $category_id = intval($_POST['category_id']);
         
-        if ($delete_stmt->execute()) {
-            $category_message = "Category deleted successfully!";
+        // Validate integer
+        if (!validateInt($category_id, 1)) {
+            $category_error = "Invalid category ID";
         } else {
-            $category_error = "Failed to delete category: " . $db->error;
+            // Check if category is used by any products
+            $check_sql = "SELECT COUNT(*) as product_count FROM products WHERE category_id = ?";
+            $check_stmt = $db->prepare($check_sql);
+            $check_stmt->bind_param("i", $category_id);
+            $check_stmt->execute();
+            $result = $check_stmt->get_result();
+            $product_count = $result->fetch_assoc()['product_count'];
+            
+            if ($product_count > 0) {
+                $category_error = "Cannot delete category: It is used by $product_count product(s).";
+            } else {
+                $delete_sql = "DELETE FROM categories WHERE id = ?";
+                $delete_stmt = $db->prepare($delete_sql);
+                $delete_stmt->bind_param("i", $category_id);
+                
+                if ($delete_stmt->execute()) {
+                    $category_message = "Category deleted successfully!";
+                    securityLog("Category deleted ID: $category_id", "INFO", $user_id);
+                } else {
+                    $category_error = "Failed to delete category: " . $db->error;
+                    securityLog("Failed to delete category ID: $category_id - " . $db->error, "ERROR", $user_id);
+                }
+            }
         }
     }
 }
@@ -336,144 +382,201 @@ if ($period_tracking_enabled) {
 
 // Handle product creation/update
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && (isset($_POST['add_product']) || isset($_POST['update_product']))) {
-    $name = trim($_POST['name']);
-    $sku = trim($_POST['sku']);
-    $category_id = intval($_POST['category_id']);
-    $cost_price = floatval($_POST['cost_price']);
-    $selling_price = floatval($_POST['selling_price']);
-    $stock_quantity = intval($_POST['stock_quantity']);
-    $min_stock = intval($_POST['min_stock']);
-    $supplier = trim($_POST['supplier']);
-    $description = trim($_POST['description']);
-    $created_by_user = !empty($_POST['created_by']) ? intval($_POST['created_by']) : $user_id;
-    $is_update = isset($_POST['update_product']);
-    $product_id = $is_update ? intval($_POST['product_id']) : null;
-
-    // Validate required fields
-    if (empty($name)) {
-        $error = "Product name is required!";
-    } elseif (!array_key_exists($category_id, $categories)) {
-        $error = "Invalid category selected!";
-    } elseif ($selling_price < $cost_price) {
-        $error = "Selling price cannot be less than cost price!";
+    // Validate CSRF token
+    if (!isset($_POST['csrf_token']) || !validateCSRFToken($_POST['csrf_token'])) {
+        $error = "Security token validation failed. Please try again.";
+        securityLog("CSRF token validation failed for product form", "SECURITY", $user_id);
     } else {
-        // Check if we're updating existing product or adding to inventory
-        if ($is_update) {
-            // UPDATE EXISTING PRODUCT
-            $product_check = canModifyProductAdmin($product_id, $user_id, $db);
-            
-            // Check if SKU already exists (excluding current product)
-            $check_sql = "SELECT id FROM products WHERE sku = ? AND id != ?";
-            $check_stmt = $db->prepare($check_sql);
-            $check_stmt->bind_param("si", $sku, $product_id);
-            $check_stmt->execute();
-            $check_stmt->store_result();
+        // Sanitize all inputs
+        $name = sanitizeInput(trim($_POST['name']), 'string');
+        $sku = sanitizeInput(trim($_POST['sku']), 'string');
+        $category_id = intval($_POST['category_id']);
+        $cost_price = floatval($_POST['cost_price']);
+        $selling_price = floatval($_POST['selling_price']);
+        $stock_quantity = intval($_POST['stock_quantity']);
+        $min_stock = intval($_POST['min_stock']);
+        $supplier = sanitizeInput(trim($_POST['supplier']), 'string');
+        $description = sanitizeInput(trim($_POST['description']), 'string');
+        $created_by_user = !empty($_POST['created_by']) ? intval($_POST['created_by']) : $user_id;
+        $is_update = isset($_POST['update_product']);
+        $product_id = $is_update ? intval($_POST['product_id']) : null;
 
-            if ($check_stmt->num_rows > 0) {
-                $error = "Another product with SKU '$sku' already exists!";
-            } else {
-                // Update product (admin can update any product)
-                $sql = "UPDATE products SET name = ?, sku = ?, category_id = ?, cost_price = ?, 
-                        selling_price = ?, stock_quantity = ?, min_stock = ?, supplier = ?, 
-                        description = ?, updated_at = NOW() 
-                        WHERE id = ?";
+        // Input validation rules
+        $validationRules = [
+            'name' => 'required|min:2|max:200',
+            'sku' => 'max:50',
+            'category_id' => 'required|numeric',
+            'cost_price' => 'required|numeric',
+            'selling_price' => 'required|numeric',
+            'stock_quantity' => 'required|numeric',
+            'min_stock' => 'numeric',
+            'supplier' => 'max:200',
+            'description' => 'max:1000'
+        ];
+        
+        $validationErrors = validateInput($_POST, $validationRules);
+        
+        // Custom validations
+        if (!validateInt($category_id, 1)) {
+            $validationErrors['category_id'] = 'Invalid category selected';
+        }
+        
+        if (!validateFloat($cost_price, 0)) {
+            $validationErrors['cost_price'] = 'Cost price must be a positive number';
+        }
+        
+        if (!validateFloat($selling_price, 0)) {
+            $validationErrors['selling_price'] = 'Selling price must be a positive number';
+        }
+        
+        if (!validateInt($stock_quantity, 0)) {
+            $validationErrors['stock_quantity'] = 'Stock quantity must be a positive integer';
+        }
+        
+        if ($min_stock < 0) {
+            $validationErrors['min_stock'] = 'Minimum stock cannot be negative';
+        }
 
-                $stmt = $db->prepare($sql);
-                $stmt->bind_param(
-                    "ssiddiissi", 
-                    $name, $sku, $category_id, $cost_price, 
-                    $selling_price, $stock_quantity, $min_stock, $supplier, 
-                    $description, $product_id
-                );
-
-                if ($stmt->execute()) {
-                    $message = "Product updated successfully!";
-                    if ($product_check['locked']) {
-                        $message .= " (Period was locked - admin override used)";
-                    }
-                    $edit_mode = false;
-                    $edit_product = null;
-                } else {
-                    $error = "Failed to update product: " . $db->error;
-                }
-            }
+        if (!empty($validationErrors)) {
+            $error = implode('<br>', $validationErrors);
+        } elseif (empty($name)) {
+            $error = "Product name is required!";
+        } elseif (!array_key_exists($category_id, $categories)) {
+            $error = "Invalid category selected!";
+        } elseif ($selling_price < $cost_price) {
+            $error = "Selling price cannot be less than cost price!";
         } else {
-            // ADD NEW PRODUCT OR UPDATE INVENTORY
-            // First check if product with same name and category exists
-            $check_sql = "SELECT id, sku, stock_quantity FROM products WHERE name = ? AND category_id = ? AND supplier = ?";
-            $check_stmt = $db->prepare($check_sql);
-            $check_stmt->bind_param("sis", $name, $category_id, $supplier);
-            $check_stmt->execute();
-            $existing_product = $check_stmt->get_result()->fetch_assoc();
-            
-            if ($existing_product) {
-                // PRODUCT EXISTS - UPDATE INVENTORY
-                $new_stock_quantity = $existing_product['stock_quantity'] + $stock_quantity;
+            // Check if we're updating existing product or adding to inventory
+            if ($is_update) {
+                // UPDATE EXISTING PRODUCT
+                $product_check = canModifyProductAdmin($product_id, $user_id, $db);
                 
-                $update_sql = "UPDATE products SET stock_quantity = ?, updated_at = NOW() WHERE id = ?";
-                $update_stmt = $db->prepare($update_sql);
-                $update_stmt->bind_param("ii", $new_stock_quantity, $existing_product['id']);
-                
-                if ($update_stmt->execute()) {
-                    $message = "Inventory updated successfully! Stock for '{$name}' increased from {$existing_product['stock_quantity']} to {$new_stock_quantity}.";
-                    $_POST = array(); // Clear form
+                // Validate product_id
+                if (!validateInt($product_id, 1)) {
+                    $error = "Invalid product ID";
                 } else {
-                    $error = "Failed to update inventory: " . $db->error;
+                    // Check if SKU already exists (excluding current product)
+                    $check_sql = "SELECT id FROM products WHERE sku = ? AND id != ?";
+                    $check_stmt = $db->prepare($check_sql);
+                    $check_stmt->bind_param("si", $sku, $product_id);
+                    $check_stmt->execute();
+                    $check_stmt->store_result();
+
+                    if ($check_stmt->num_rows > 0) {
+                        $error = "Another product with SKU '$sku' already exists!";
+                    } else {
+                        // Update product (admin can update any product)
+                        $sql = "UPDATE products SET name = ?, sku = ?, category_id = ?, cost_price = ?, 
+                                selling_price = ?, stock_quantity = ?, min_stock = ?, supplier = ?, 
+                                description = ?, updated_at = NOW() 
+                                WHERE id = ?";
+
+                        $stmt = prepareStatement($db, $sql, [
+                            $name, $sku, $category_id, $cost_price, 
+                            $selling_price, $stock_quantity, $min_stock, $supplier, 
+                            $description, $product_id
+                        ], "ssiddiissi");
+
+                        if ($stmt && $stmt->execute()) {
+                            $message = "Product updated successfully!";
+                            if ($product_check['locked']) {
+                                $message .= " (Period was locked - admin override used)";
+                            }
+                            $edit_mode = false;
+                            $edit_product = null;
+                            securityLog("Product updated ID: $product_id - Name: $name", "INFO", $user_id);
+                        } else {
+                            $error = "Failed to update product: " . $db->error;
+                            securityLog("Failed to update product ID: $product_id - " . $db->error, "ERROR", $user_id);
+                        }
+                    }
                 }
             } else {
-                // NEW PRODUCT - CREATE WITH AUTO-GENERATED SKU
-                if (empty($sku)) {
-                    $sku = generateUniqueSKU($name, $category_id, $db);
-                } else {
-                    // Check if manually entered SKU already exists
-                    $check_sku_sql = "SELECT id FROM products WHERE sku = ?";
-                    $check_sku_stmt = $db->prepare($check_sku_sql);
-                    $check_sku_stmt->bind_param("s", $sku);
-                    $check_sku_stmt->execute();
-                    
-                    if ($check_sku_stmt->get_result()->num_rows > 0) {
-                        $error = "Product with SKU '$sku' already exists!";
-                    }
-                }
+                // ADD NEW PRODUCT OR UPDATE INVENTORY
+                // First check if product with same name and category exists
+                $check_sql = "SELECT id, sku, stock_quantity FROM products WHERE name = ? AND category_id = ? AND supplier = ?";
+                $check_stmt = $db->prepare($check_sql);
+                $check_stmt->bind_param("sis", $name, $category_id, $supplier);
+                $check_stmt->execute();
+                $existing_product = $check_stmt->get_result()->fetch_assoc();
                 
-                if (!$error) {
-                    // Build SQL based on whether period tracking is enabled
-                    if ($period_tracking_enabled && $current_period) {
-                        $sql = "INSERT INTO products (name, sku, category_id, cost_price, selling_price, 
-                                stock_quantity, min_stock, supplier, description, created_by,
-                                period_id, period_year, period_month, added_date, added_by) 
-                                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURDATE(), ?)";
-                        
-                        $stmt = $db->prepare($sql);
-                        $period_id = $current_period['id'];
-                        $period_year = $current_period['year'];
-                        $period_month = $current_period['month'];
-                        
-                        $stmt->bind_param("ssiddiissiiiii", $name, $sku, $category_id, $cost_price, 
-                                        $selling_price, $stock_quantity, $min_stock, $supplier, 
-                                        $description, $created_by_user, $period_id, $period_year, $period_month, $user_id);
+                if ($existing_product) {
+                    // PRODUCT EXISTS - UPDATE INVENTORY
+                    $new_stock_quantity = $existing_product['stock_quantity'] + $stock_quantity;
+                    
+                    $update_sql = "UPDATE products SET stock_quantity = ?, updated_at = NOW() WHERE id = ?";
+                    $update_stmt = $db->prepare($update_sql);
+                    $update_stmt->bind_param("ii", $new_stock_quantity, $existing_product['id']);
+                    
+                    if ($update_stmt->execute()) {
+                        $message = "Inventory updated successfully! Stock for '{$name}' increased from {$existing_product['stock_quantity']} to {$new_stock_quantity}.";
+                        $_POST = array(); // Clear form
+                        securityLog("Inventory updated for product ID: {$existing_product['id']} - New stock: $new_stock_quantity", "INFO", $user_id);
                     } else {
-                        // Fallback without period tracking
-                        $sql = "INSERT INTO products (name, sku, category_id, cost_price, selling_price, 
-                                stock_quantity, min_stock, supplier, description, created_by) 
-                                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+                        $error = "Failed to update inventory: " . $db->error;
+                        securityLog("Failed to update inventory for product ID: {$existing_product['id']} - " . $db->error, "ERROR", $user_id);
+                    }
+                } else {
+                    // NEW PRODUCT - CREATE WITH AUTO-GENERATED SKU
+                    if (empty($sku)) {
+                        $sku = generateUniqueSKU($name, $category_id, $db);
+                    } else {
+                        // Check if manually entered SKU already exists
+                        $check_sku_sql = "SELECT id FROM products WHERE sku = ?";
+                        $check_sku_stmt = $db->prepare($check_sku_sql);
+                        $check_sku_stmt->bind_param("s", $sku);
+                        $check_sku_stmt->execute();
                         
-                        $stmt = $db->prepare($sql);
-                        $stmt->bind_param("ssiddiissi", $name, $sku, $category_id, $cost_price, 
-                                        $selling_price, $stock_quantity, $min_stock, $supplier, 
-                                        $description, $created_by_user);
+                        if ($check_sku_stmt->get_result()->num_rows > 0) {
+                            $error = "Product with SKU '$sku' already exists!";
+                        }
                     }
                     
-                    if ($stmt->execute()) {
+                    if (!$error) {
+                        // Build SQL based on whether period tracking is enabled
                         if ($period_tracking_enabled && $current_period) {
-                            $message = "Product added successfully for period: " . $current_period['period_name'] . "! SKU: {$sku}";
+                            $sql = "INSERT INTO products (name, sku, category_id, cost_price, selling_price, 
+                                    stock_quantity, min_stock, supplier, description, created_by,
+                                    period_id, period_year, period_month, added_date, added_by) 
+                                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURDATE(), ?)";
+                            
+                            $params = [
+                                $name, $sku, $category_id, $cost_price, 
+                                $selling_price, $stock_quantity, $min_stock, $supplier, 
+                                $description, $created_by_user, $current_period['id'], 
+                                $current_period['year'], $current_period['month'], $user_id
+                            ];
+                            $types = "ssiddiissiiiii";
                         } else {
-                            $message = "Product added successfully! SKU: {$sku}";
+                            // Fallback without period tracking
+                            $sql = "INSERT INTO products (name, sku, category_id, cost_price, selling_price, 
+                                    stock_quantity, min_stock, supplier, description, created_by) 
+                                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+                            
+                            $params = [
+                                $name, $sku, $category_id, $cost_price, 
+                                $selling_price, $stock_quantity, $min_stock, $supplier, 
+                                $description, $created_by_user
+                            ];
+                            $types = "ssiddiissi";
                         }
-                        // Clear form
-                        $_POST = array();
-                    } else {
-                        $error = "Failed to add product: " . $db->error;
+                        
+                        $stmt = prepareStatement($db, $sql, $params, $types);
+                        
+                        if ($stmt && $stmt->execute()) {
+                            if ($period_tracking_enabled && $current_period) {
+                                $message = "Product added successfully for period: " . $current_period['period_name'] . "! SKU: {$sku}";
+                            } else {
+                                $message = "Product added successfully! SKU: {$sku}";
+                            }
+                            // Clear form
+                            $_POST = array();
+                            $new_product_id = $stmt->insert_id;
+                            securityLog("Product created ID: $new_product_id - Name: $name - SKU: $sku", "INFO", $user_id);
+                        } else {
+                            $error = "Failed to add product: " . $db->error;
+                            securityLog("Failed to create product - " . $db->error, "ERROR", $user_id);
+                        }
                     }
                 }
             }
@@ -483,23 +586,35 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && (isset($_POST['add_product']) || is
 
 // Handle product deletion
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['delete_product'])) {
-    $product_id = intval($_POST['product_id']);
-    
-    // Check if product can be modified (admin version)
-    $product_check = canModifyProductAdmin($product_id, $user_id, $db);
-    
-    // Delete product (admin can delete any product)
-    $sql = "DELETE FROM products WHERE id = ?";
-    $stmt = $db->prepare($sql);
-    $stmt->bind_param("i", $product_id);
-    
-    if ($stmt->execute()) {
-        $message = "Product deleted successfully!";
-        if ($product_check['locked']) {
-            $message .= " (Period was locked - admin override used)";
-        }
+    // Validate CSRF token
+    if (!isset($_POST['csrf_token']) || !validateCSRFToken($_POST['csrf_token'])) {
+        $error = "Security token validation failed. Please try again.";
+        securityLog("CSRF token validation failed for product deletion", "SECURITY", $user_id);
     } else {
-        $error = "Failed to delete product: " . $db->error;
+        $product_id = intval($_POST['product_id']);
+        
+        // Validate product_id
+        if (!validateInt($product_id, 1)) {
+            $error = "Invalid product ID";
+        } else {
+            // Check if product can be modified (admin version)
+            $product_check = canModifyProductAdmin($product_id, $user_id, $db);
+            
+            // Delete product (admin can delete any product)
+            $sql = "DELETE FROM products WHERE id = ?";
+            $stmt = prepareStatement($db, $sql, [$product_id], "i");
+            
+            if ($stmt && $stmt->execute()) {
+                $message = "Product deleted successfully!";
+                if ($product_check['locked']) {
+                    $message .= " (Period was locked - admin override used)";
+                }
+                securityLog("Product deleted ID: $product_id", "INFO", $user_id);
+            } else {
+                $error = "Failed to delete product: " . $db->error;
+                securityLog("Failed to delete product ID: $product_id - " . $db->error, "ERROR", $user_id);
+            }
+        }
     }
 }
 
@@ -507,21 +622,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['delete_product'])) {
 if (isset($_GET['edit'])) {
     $product_id = intval($_GET['edit']);
     
-    // Get product (admin can view any product)
-    $sql = "SELECT p.*, u.name as creator_name, u.email as creator_email 
-            FROM products p 
-            LEFT JOIN users u ON p.created_by = u.id 
-            WHERE p.id = ?";
-    $stmt = $db->prepare($sql);
-    $stmt->bind_param("i", $product_id);
-    $stmt->execute();
-    $result = $stmt->get_result();
-    
-    if ($result->num_rows > 0) {
-        $edit_product = $result->fetch_assoc();
-        $edit_mode = true;
+    // Validate product_id from URL
+    if (!validateInt($product_id, 1)) {
+        $error = "Invalid product ID";
+        securityLog("Invalid product ID in URL: $product_id", "WARNING", $user_id);
     } else {
-        $error = "Product not found!";
+        // Get product (admin can view any product)
+        $sql = "SELECT p.*, u.name as creator_name, u.email as creator_email 
+                FROM products p 
+                LEFT JOIN users u ON p.created_by = u.id 
+                WHERE p.id = ?";
+        $stmt = prepareStatement($db, $sql, [$product_id], "i");
+        
+        if ($stmt) {
+            $stmt->execute();
+            $result = $stmt->get_result();
+            
+            if ($result->num_rows > 0) {
+                $edit_product = $result->fetch_assoc();
+                $edit_mode = true;
+            } else {
+                $error = "Product not found!";
+            }
+        }
     }
 }
 
@@ -540,7 +663,11 @@ $users_sql = "SELECT id, name, email FROM users ORDER BY name";
 $users_result = $db->query($users_sql);
 $all_users = [];
 while ($user = $users_result->fetch_assoc()) {
-    $all_users[$user['id']] = $user;
+    $all_users[$user['id']] = [
+        'id' => $user['id'],
+        'name' => sanitizeInput($user['name'], 'string'),
+        'email' => sanitizeInput($user['email'], 'string')
+    ];
 }
 
 // Build query for products based on period filter
@@ -549,9 +676,11 @@ $params = [];
 $param_types = "";
 
 if ($selected_period_id) {
-    $where_conditions[] = "p.period_id = ?";
-    $params[] = $selected_period_id;
-    $param_types .= "i";
+    if (validateInt($selected_period_id, 1)) {
+        $where_conditions[] = "p.period_id = ?";
+        $params[] = $selected_period_id;
+        $param_types .= "i";
+    }
 }
 
 if ($period_tracking_enabled) {
@@ -577,12 +706,15 @@ if ($period_tracking_enabled) {
     $sql .= " ORDER BY p.name ASC";
 }
 
-$stmt = $db->prepare($sql);
-if (!empty($params)) {
-    $stmt->bind_param($param_types, ...$params);
+$stmt = prepareStatement($db, $sql, $params, $param_types);
+if ($stmt) {
+    $stmt->execute();
+    $products = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+} else {
+    $products = [];
+    $error = "Failed to fetch products: " . $db->error;
+    securityLog("Failed to fetch products - " . $db->error, "ERROR", $user_id);
 }
-$stmt->execute();
-$products = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
 
 // Calculate statistics
 $total_products = count($products);
@@ -592,6 +724,22 @@ $products_by_period = [];
 $products_by_user = [];
 
 foreach ($products as $product) {
+    // Sanitize product data for display
+    $product['name'] = sanitizeInput($product['name'], 'string');
+    $product['sku'] = sanitizeInput($product['sku'], 'string');
+    $product['supplier'] = sanitizeInput($product['supplier'], 'string');
+    $product['description'] = sanitizeInput($product['description'], 'string');
+    
+    if (isset($product['creator_name'])) {
+        $product['creator_name'] = sanitizeInput($product['creator_name'], 'string');
+    }
+    if (isset($product['creator_email'])) {
+        $product['creator_email'] = sanitizeInput($product['creator_email'], 'string');
+    }
+    if (isset($product['period_name'])) {
+        $product['period_name'] = sanitizeInput($product['period_name'], 'string');
+    }
+    
     if ($product['stock_quantity'] <= $product['min_stock']) {
         $low_stock_count++;
     }
@@ -694,7 +842,7 @@ if (!$period_tracking_enabled) {
                         <?php if ($period_tracking_enabled && $current_period): ?>
                             <div class="badge bg-primary fs-6 p-2">
                                 <i class="fas fa-calendar me-1"></i>
-                                Adding to: <?= $current_period['period_name'] ?>
+                                Adding to: <?= htmlspecialchars($current_period['period_name']) ?>
                                 <?= $current_period['is_locked'] ? ' (Locked - Admin Override)' : '' ?>
                             </div>
                         <?php elseif ($period_tracking_enabled): ?>
@@ -732,14 +880,14 @@ if (!$period_tracking_enabled) {
                 <!-- Alerts -->
                 <?php if ($message): ?>
                     <div class="alert alert-success alert-dismissible fade show" role="alert">
-                        <i class="fas fa-check-circle me-2"></i><?= $message ?>
+                        <i class="fas fa-check-circle me-2"></i><?= htmlspecialchars($message) ?>
                         <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
                     </div>
                 <?php endif; ?>
 
                 <?php if ($error): ?>
                     <div class="alert alert-danger alert-dismissible fade show" role="alert">
-                        <i class="fas fa-exclamation-triangle me-2"></i><?= $error ?>
+                        <i class="fas fa-exclamation-triangle me-2"></i><?= htmlspecialchars($error) ?>
                         <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
                     </div>
                 <?php endif; ?>
@@ -747,14 +895,14 @@ if (!$period_tracking_enabled) {
                 <!-- Category Alerts -->
                 <?php if ($category_message): ?>
                     <div class="alert alert-success alert-dismissible fade show" role="alert">
-                        <i class="fas fa-check-circle me-2"></i><?= $category_message ?>
+                        <i class="fas fa-check-circle me-2"></i><?= htmlspecialchars($category_message) ?>
                         <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
                     </div>
                 <?php endif; ?>
 
                 <?php if ($category_error): ?>
                     <div class="alert alert-danger alert-dismissible fade show" role="alert">
-                        <i class="fas fa-exclamation-triangle me-2"></i><?= $category_error ?>
+                        <i class="fas fa-exclamation-triangle me-2"></i><?= htmlspecialchars($category_error) ?>
                         <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
                     </div>
                 <?php endif; ?>
@@ -766,7 +914,7 @@ if (!$period_tracking_enabled) {
                 <?php if ($current_period): ?>
                     <div class="alert alert-success alert-dismissible fade show" role="alert">
                         <i class="fas fa-check-circle me-2"></i>
-                        <strong>Active Period Detected:</strong> <?= $current_period['period_name'] ?> 
+                        <strong>Active Period Detected:</strong> <?= htmlspecialchars($current_period['period_name']) ?> 
                         (Start: <?= date('M j, Y', strtotime($current_period['start_date'])) ?>, 
                         End: <?= date('M j, Y', strtotime($current_period['end_date'])) ?>,
                         Locked: <?= $current_period['is_locked'] ? 'Yes' : 'No' ?>)
@@ -787,6 +935,7 @@ if (!$period_tracking_enabled) {
                             </div>
                             <div class="col-md-6">
                                 <form method="GET" class="d-flex gap-2">
+                                    <input type="hidden" name="csrf_token" value="<?= $csrf_token ?>">
                                     <select name="period_id" class="form-select" onchange="this.form.submit()">
                                         <option value="">All Periods</option>
                                         <?php foreach ($periods as $period): 
@@ -836,7 +985,7 @@ if (!$period_tracking_enabled) {
                                 </div>
                                 <p class="card-text mb-0">
                                     <?php if ($selected_period_id && isset($periods[$selected_period_id])): ?>
-                                        In <?= $periods[$selected_period_id]['period_name'] ?>
+                                        In <?= htmlspecialchars($periods[$selected_period_id]['period_name']) ?>
                                     <?php else: ?>
                                         Across all users
                                     <?php endif; ?>
@@ -886,7 +1035,7 @@ if (!$period_tracking_enabled) {
                                 <div class="period-summary">
                                     <?php foreach ($products_by_user as $user => $count): ?>
                                         <div class="d-flex justify-content-between small mb-1">
-                                            <span><?= $user ?></span>
+                                            <span><?= htmlspecialchars($user) ?></span>
                                             <strong><?= $count ?> products</strong>
                                         </div>
                                     <?php endforeach; ?>
@@ -904,7 +1053,7 @@ if (!$period_tracking_enabled) {
                                 <h5 class="mb-0">
                                     <i class="fas fa-boxes me-2"></i>
                                     <?php if ($selected_period_id && isset($periods[$selected_period_id])): ?>
-                                        Products in <?= $periods[$selected_period_id]['period_name'] ?>
+                                        Products in <?= htmlspecialchars($periods[$selected_period_id]['period_name']) ?>
                                     <?php else: ?>
                                         All Products (Admin View)
                                     <?php endif; ?>
@@ -920,7 +1069,7 @@ if (!$period_tracking_enabled) {
                                         <select id="periodFilter" class="form-select form-select-sm" style="max-width: 200px;">
                                             <option value="">All Periods</option>
                                             <?php foreach (array_keys($products_by_period) as $period): ?>
-                                                <option value="<?= htmlspecialchars($period) ?>"><?= $period ?></option>
+                                                <option value="<?= htmlspecialchars($period) ?>"><?= htmlspecialchars($period) ?></option>
                                             <?php endforeach; ?>
                                         </select>
                                     <?php endif; ?>
@@ -1045,12 +1194,13 @@ if (!$period_tracking_enabled) {
                                                         </td>
                                                         <td>
                                                             <div class="btn-group btn-group-sm">
-                                                                <a href="?edit=<?= $product['id'] ?>" class="btn btn-outline-primary" 
+                                                                <a href="?edit=<?= $product['id'] ?>&csrf_token=<?= $csrf_token ?>" class="btn btn-outline-primary" 
                                                                    title="<?= $is_locked ? 'Edit (Admin Override)' : 'Edit' ?>">
                                                                     <i class="fas fa-edit"></i>
                                                                 </a>
                                                                 <form method="POST" class="d-inline" 
                                                                       onsubmit="return confirm('<?= $is_locked ? 'This period is locked. Are you sure you want to delete this product? (Admin Override)' : 'Are you sure you want to delete this product?' ?>')">
+                                                                    <input type="hidden" name="csrf_token" value="<?= $csrf_token ?>">
                                                                     <input type="hidden" name="product_id" value="<?= $product['id'] ?>">
                                                                     <button type="submit" name="delete_product" class="btn btn-outline-danger"
                                                                             title="<?= $is_locked ? 'Delete (Admin Override)' : 'Delete' ?>">
@@ -1097,12 +1247,13 @@ if (!$period_tracking_enabled) {
                         <i class="fas <?= $edit_mode ? 'fa-edit' : 'fa-plus' ?> me-2"></i>
                         <?= $edit_mode ? 'Edit Product' : 'Add/Update Product' ?>
                         <?php if (!$edit_mode && $period_tracking_enabled && $current_period): ?>
-                            <small class="text-muted">(Period: <?= $current_period['period_name'] ?>)</small>
+                            <small class="text-muted">(Period: <?= htmlspecialchars($current_period['period_name']) ?>)</small>
                         <?php endif; ?>
                     </h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <form method="POST">
+                    <input type="hidden" name="csrf_token" value="<?= $csrf_token ?>">
                     <div class="modal-body">
                         <?php if ($edit_mode): ?>
                             <input type="hidden" name="product_id" value="<?= $edit_product['id'] ?>">
@@ -1143,7 +1294,7 @@ if (!$period_tracking_enabled) {
                                     <label for="name" class="form-label">Product Name <span class="text-danger">*</span></label>
                                     <input type="text" class="form-control" id="name" name="name" 
                                            value="<?= isset($edit_product) ? htmlspecialchars($edit_product['name']) : (isset($_POST['name']) ? htmlspecialchars($_POST['name']) : '') ?>" 
-                                           required>
+                                           required maxlength="200">
                                 </div>
                             </div>
                             <div class="col-md-6">
@@ -1152,7 +1303,7 @@ if (!$period_tracking_enabled) {
                                     <div class="input-group">
                                         <input type="text" class="form-control" id="sku" name="sku" 
                                                value="<?= isset($edit_product) ? htmlspecialchars($edit_product['sku']) : (isset($_POST['sku']) ? htmlspecialchars($_POST['sku']) : '') ?>" 
-                                               <?= $edit_mode ? 'required' : '' ?>>
+                                               <?= $edit_mode ? 'required' : '' ?> maxlength="50">
                                         <?php if (!$edit_mode): ?>
                                             <button type="button" class="btn btn-outline-secondary" id="generateSKU">
                                                 <i class="fas fa-magic me-1"></i>Auto Generate
@@ -1163,7 +1314,7 @@ if (!$period_tracking_enabled) {
                                         <?php if ($edit_mode): ?>
                                             Unique product identifier
                                         <?php else: ?>
-                                            Leave empty for auto-generation or enter custom SKU
+                                            Leave empty for auto-generation or enter custom SKU (max 50 chars)
                                         <?php endif; ?>
                                     </div>
                                 </div>
@@ -1196,7 +1347,8 @@ if (!$period_tracking_enabled) {
                                 <div class="mb-3">
                                     <label for="supplier" class="form-label">Supplier</label>
                                     <input type="text" class="form-control" id="supplier" name="supplier" 
-                                           value="<?= isset($edit_product) ? htmlspecialchars($edit_product['supplier']) : (isset($_POST['supplier']) ? htmlspecialchars($_POST['supplier']) : '') ?>">
+                                           value="<?= isset($edit_product) ? htmlspecialchars($edit_product['supplier']) : (isset($_POST['supplier']) ? htmlspecialchars($_POST['supplier']) : '') ?>"
+                                           maxlength="200">
                                 </div>
                             </div>
                         </div>
@@ -1246,7 +1398,7 @@ if (!$period_tracking_enabled) {
 
                         <div class="mb-3">
                             <label for="description" class="form-label">Description</label>
-                            <textarea class="form-control" id="description" name="description" rows="3"><?= isset($edit_product) ? htmlspecialchars($edit_product['description']) : (isset($_POST['description']) ? htmlspecialchars($_POST['description']) : '') ?></textarea>
+                            <textarea class="form-control" id="description" name="description" rows="3" maxlength="1000"><?= isset($edit_product) ? htmlspecialchars($edit_product['description']) : (isset($_POST['description']) ? htmlspecialchars($_POST['description']) : '') ?></textarea>
                         </div>
 
                         <?php if ($period_tracking_enabled && !$current_period && !$edit_mode): ?>
@@ -1274,7 +1426,7 @@ if (!$period_tracking_enabled) {
                                 <?= $period_tracking_enabled && !$current_period ? 'disabled' : '' ?>>
                                 <i class="fas fa-plus me-2"></i>
                                 <?php if ($period_tracking_enabled && $current_period): ?>
-                                    Add to <?= $current_period['period_name'] ?>
+                                    Add to <?= htmlspecialchars($current_period['period_name']) ?>
                                     <?= $current_period['is_locked'] ? ' (Admin Override)' : '' ?>
                                 <?php else: ?>
                                     Add/Update Product
@@ -1302,16 +1454,17 @@ if (!$period_tracking_enabled) {
                     <div class="mb-4">
                         <h6 class="border-bottom pb-2">Add New Category</h6>
                         <form method="POST" id="addCategoryForm">
+                            <input type="hidden" name="csrf_token" value="<?= $csrf_token ?>">
                             <div class="mb-3">
                                 <label for="category_name" class="form-label">Category Name <span class="text-danger">*</span></label>
                                 <input type="text" class="form-control" id="category_name" name="category_name" 
                                        value="<?= isset($_POST['category_name']) ? htmlspecialchars($_POST['category_name']) : '' ?>" 
-                                       required>
+                                       required maxlength="100">
                             </div>
                             <div class="mb-3">
                                 <label for="category_type" class="form-label">Type</label>
                                 <input type="text" class="form-control" id="category_type" name="category_type" 
-                                       value="product" placeholder="e.g., product, service">
+                                       value="product" placeholder="e.g., product, service" maxlength="10">
                                 <div class="form-text">Optional: Specify category type</div>
                             </div>
                             <div class="mb-3">
@@ -1360,6 +1513,7 @@ if (!$period_tracking_enabled) {
                                                 <td>
                                                     <?php if ($product_count == 0): ?>
                                                         <form method="POST" class="d-inline" onsubmit="return confirm('Are you sure you want to delete this category?')">
+                                                            <input type="hidden" name="csrf_token" value="<?= $csrf_token ?>">
                                                             <input type="hidden" name="category_id" value="<?= $id ?>">
                                                             <button type="submit" name="delete_category" class="btn btn-sm btn-outline-danger">
                                                                 <i class="fas fa-trash"></i>
@@ -1396,7 +1550,7 @@ if (!$period_tracking_enabled) {
             });
         <?php endif; ?>
 
-        <?php if ($category_message || $category_error): ?>
+        <?php if (($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_category'])) && ($category_message || $category_error)): ?>
             document.addEventListener('DOMContentLoaded', function() {
                 const modal = new bootstrap.Modal(document.getElementById('categoryModal'));
                 modal.show();
@@ -1482,16 +1636,49 @@ if (!$period_tracking_enabled) {
             }
         }
 
-        // Category modal handling
-        const categoryModal = document.getElementById('categoryModal');
-        if (categoryModal) {
-            categoryModal.addEventListener('hidden.bs.modal', function () {
-                // Refresh the page to update categories dropdown
-                setTimeout(() => {
-                    window.location.reload();
-                }, 100);
+        // Category modal handling - FIXED VERSION
+        document.addEventListener('DOMContentLoaded', function() {
+            const categoryModal = document.getElementById('categoryModal');
+            const addCategoryForm = document.getElementById('addCategoryForm');
+            
+            if (categoryModal) {
+                // Only refresh if form was submitted successfully
+                categoryModal.addEventListener('hidden.bs.modal', function (event) {
+                    // Check if the modal was hidden due to form submission
+                    if (categoryModal.dataset.submitted === 'true') {
+                        // Clear the flag
+                        delete categoryModal.dataset.submitted;
+                        // Reload to update categories dropdown
+                        window.location.reload();
+                    }
+                });
+                
+                // Handle form submission
+                if (addCategoryForm) {
+                    addCategoryForm.addEventListener('submit', function(e) {
+                        // Set flag to indicate form was submitted
+                        categoryModal.dataset.submitted = 'true';
+                    });
+                }
+                
+                // Reset form when modal is shown
+                categoryModal.addEventListener('show.bs.modal', function() {
+                    // Clear any existing submitted flag
+                    delete categoryModal.dataset.submitted;
+                });
+            }
+            
+            // Handle close buttons
+            const closeButtons = document.querySelectorAll('[data-bs-dismiss="modal"]');
+            closeButtons.forEach(button => {
+                button.addEventListener('click', function() {
+                    const modal = this.closest('.modal');
+                    if (modal && modal.id === 'categoryModal') {
+                        delete modal.dataset.submitted;
+                    }
+                });
             });
-        }
+        });
     </script>
 </body>
 </html>

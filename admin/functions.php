@@ -1,22 +1,4 @@
 <?php
-include 'config.php'; // include your Database class + session + auth functions
-
-// ---------------------
-// TOTAL INCOME
-// ---------------------
-function getTotalIncome() {
-    $database = new Database();
-    $db = $database->getConnection();
-    
-    $query = "SELECT SUM(total_amount) AS total FROM transactions";
-    $stmt = $db->prepare($query);
-    $stmt->execute();
-
-    $result = $stmt->get_result();
-    $row = $result->fetch_assoc();
-
-    return $row['total'] ?? 0;
-}
 
 // ---------------------
 // TOTAL PROFIT

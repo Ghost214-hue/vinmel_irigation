@@ -447,11 +447,7 @@ unset($_SESSION['error_message']);
                     <h1><i class="fas fa-money-bill-wave"></i> Sales & Income</h1>
                     <p class="text-muted">Track and manage all sales transactions and income</p>
                 </div>
-                <div>
-                    <button type="button" class="btn btn-success" onclick="window.location.href='pos.php'">
-                        <i class="fas fa-cash-register"></i> New Sale
-                    </button>
-                </div>
+                
             </div>
 
             <!-- Success/Error Messages -->

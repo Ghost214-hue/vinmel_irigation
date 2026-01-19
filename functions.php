@@ -1,12 +1,5 @@
 <?php
-/**
- * CENTRAL FUNCTIONS FILE FOR VINMEL IRRIGATION
- * Contains all common functions to avoid redeclaration errors
- */
 
-/**
- * Get current active time period for user
- */
 function getCurrentTimePeriod($user_id, $db) {
     $sql = "SELECT * FROM time_periods 
             WHERE created_by = ? 

@@ -13,11 +13,7 @@
         <!-- Managerial Section (New) -->
         <div class="nav-section">
             <div class="nav-section-title">Managerial</div>
-            
-            <a href="periods.php" class="nav-link">
-                <i class="fas fa-calendar-plus"></i>
-                Start a Period
-            </a>
+           
             
             <a href="add_product.php" class="nav-link">
                 <i class="fas fa-plus-square"></i>

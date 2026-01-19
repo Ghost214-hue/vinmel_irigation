@@ -817,17 +817,6 @@ function logAction($db, $user_id, $action, $details = '') {
     }
 }
 
-// Security function to sanitize input
-function sanitizeInput($data) {
-    if (is_array($data)) {
-        return array_map('sanitizeInput', $data);
-    }
-    
-    $data = trim($data);
-    $data = stripslashes($data);
-    $data = htmlspecialchars($data);
-    return $data;
-}
 
 // Validate date format
 function isValidDate($date, $format = 'Y-m-d') {
